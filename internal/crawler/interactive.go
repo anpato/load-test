@@ -37,7 +37,11 @@ func InteractiveCrawl(ctx context.Context, baseURL, authJSON string) ([]string, 
 		return nil, fmt.Errorf("marshal args: %w", err)
 	}
 
-	log.Printf("[crawler] interactive discovery: %s", baseURL)
+	if authJSON != "" {
+		log.Printf("[crawler] interactive discovery: %s (with auth)", baseURL)
+	} else {
+		log.Printf("[crawler] interactive discovery: %s (no auth)", baseURL)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, nodePath, scriptPath, string(argsJSON))
