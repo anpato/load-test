@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -358,6 +359,8 @@ func (s *Server) HandleInteractiveCrawl(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "url is required")
 		return
 	}
+
+	log.Printf("[api] interactive crawl: url=%s authJson=%d bytes", req.URL, len(req.AuthJSON))
 
 	urls, err := crawler.InteractiveCrawl(r.Context(), req.URL, req.AuthJSON)
 	if err != nil {

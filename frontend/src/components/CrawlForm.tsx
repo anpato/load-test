@@ -95,6 +95,7 @@ export function CrawlForm({ onResult, authJson }: CrawlFormProps) {
             type="button"
             disabled={loading || browsing || !url}
             onClick={async () => {
+              console.log('[CrawlForm] browse & discover authJson:', authJson);
               setError(null);
               setBrowsing(true);
               try {
