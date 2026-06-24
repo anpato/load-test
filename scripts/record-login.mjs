@@ -1,5 +1,4 @@
 import { chromium } from 'playwright';
-import { execSync } from 'child_process';
 
 const loginURL = process.argv[2];
 if (!loginURL) {
@@ -150,24 +149,9 @@ await page.goto(loginURL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 await new Promise((resolve) => {
   let done = false;
   const finish = () => { if (!done) { done = true; resolve(); } };
-  browser.on('disconnected', finish);
-
-  let chromePid;
-  try {
-    chromePid = parseInt(execSync(`pgrep -P ${process.pid}`).toString().trim().split('\n')[0]);
-  } catch {}
-
-  if (chromePid) {
-    const check = setInterval(() => {
-      try {
-        process.kill(chromePid, 0);
-      } catch {
-        process.stderr.write(`[recorder] browser closed\n`);
-        clearInterval(check);
-        finish();
-      }
-    }, 300);
-  }
+  page.on('close', () => { process.stderr.write('[recorder] page closed\n'); finish(); });
+  context.on('close', () => { process.stderr.write('[recorder] context closed\n'); finish(); });
+  browser.on('disconnected', () => { process.stderr.write('[recorder] browser disconnected\n'); finish(); });
 });
 
 process.stderr.write(`[recorder] captured ${steps.length} steps\n`);

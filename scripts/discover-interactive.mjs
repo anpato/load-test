@@ -1,5 +1,4 @@
 import { chromium } from 'playwright';
-import { execSync } from 'child_process';
 
 const args = JSON.parse(process.argv[2] || '{}');
 const { baseUrl, auth } = args;
@@ -94,26 +93,23 @@ process.stderr.write(`[discover] opening ${baseUrl} — click around to discover
 await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 trackUrl(page.url());
 
-let chromePid;
-try {
-  chromePid = parseInt(execSync(`pgrep -P ${process.pid}`).toString().trim().split('\n')[0]);
-} catch {}
-
 await new Promise((resolve) => {
   let done = false;
-  const finish = () => { if (!done) { done = true; resolve(); } };
-  browser.on('disconnected', finish);
+  const finish = () => { process.stderr.write('[discover] close detected\n'); if (!done) { done = true; resolve(); } };
 
-  if (chromePid) {
-    const check = setInterval(() => {
-      try {
-        process.kill(chromePid, 0);
-      } catch {
-        clearInterval(check);
-        finish();
-      }
-    }, 300);
-  }
+  browser.on('disconnected', finish);
+  context.on('close', finish);
+
+  // Track all pages — when count drops to zero, user closed the window
+  const pages = new Set(context.pages());
+  for (const p of pages) p.on('close', () => { pages.delete(p); if (pages.size === 0) finish(); });
+  context.on('page', (p) => {
+    pages.add(p);
+    p.on('close', () => { pages.delete(p); if (pages.size === 0) finish(); });
+    p.on('framenavigated', (frame) => {
+      if (frame === p.mainFrame()) trackUrl(frame.url());
+    });
+  });
 });
 
 const urls = [...discovered].sort();
