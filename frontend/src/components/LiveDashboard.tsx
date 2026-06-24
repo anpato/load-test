@@ -147,9 +147,6 @@ function VitalCard({
         <span className="font-mono font-bold text-[13px] tracking-wide text-fg">
           {meta.label}
         </span>
-        <span className="font-mono text-[10.5px] text-subtle">
-          {meta.good} · {meta.poor}
-        </span>
       </div>
 
       <div className="flex items-baseline gap-2 mb-1">
@@ -278,6 +275,40 @@ function LogPanel({ logs }: { logs: string[] }) {
   );
 }
 
+function MetricSection({
+  label,
+  snapshots,
+  history,
+}: {
+  label: string;
+  snapshots: MetricSnapshot[];
+  history: MetricSnapshot[];
+}) {
+  const vitals: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
+
+  function getP75(key: VitalKey): number | null {
+    const matches = snapshots.filter((s) => s.Metric.toLowerCase().includes(key));
+    if (matches.length === 0) return null;
+    return matches.reduce((sum, s) => sum + s.P75, 0) / matches.length;
+  }
+
+  return (
+    <div className="space-y-2">
+      <h3 className="font-mono font-semibold text-[13px] text-muted truncate">{label}</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {vitals.map((key) => (
+          <VitalCard
+            key={key}
+            vitalKey={key}
+            history={history}
+            currentP75={getP75(key)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function LiveDashboard({
   snapshots,
   history,
@@ -285,27 +316,7 @@ export default function LiveDashboard({
   connected,
   onStop,
 }: Props) {
-  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
-  const vitals: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
-
   const allUrls = [...new Set(history.map((s) => s.URL).filter(Boolean))].sort();
-
-  const filteredSnapshots = selectedUrl
-    ? snapshots.filter((s) => s.URL === selectedUrl)
-    : snapshots;
-
-  const filteredHistory = selectedUrl
-    ? history.filter((s) => s.URL === selectedUrl)
-    : history;
-
-  function getCurrentP75(key: VitalKey): number | null {
-    const matches = filteredSnapshots.filter((s) =>
-      s.Metric.toLowerCase().includes(key)
-    );
-    if (matches.length === 0) return null;
-    const total = matches.reduce((sum, s) => sum + s.P75, 0);
-    return total / matches.length;
-  }
 
   return (
     <div className="space-y-4">
@@ -338,46 +349,24 @@ export default function LiveDashboard({
       </div>
 
       {allUrls.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          <button
-            onClick={() => setSelectedUrl(null)}
-            className={`shrink-0 h-[30px] px-3 rounded-full font-semibold text-[12px] border transition-colors ${
-              selectedUrl === null
-                ? 'bg-accent-soft text-accent border-accent'
-                : 'bg-s2 text-muted border-border hover:border-bs'
-            }`}
-          >
-            All routes
-          </button>
-          {allUrls.map((url) => {
-            const path = url.replace(/^https?:\/\/[^/]+/, '') || '/';
-            return (
-              <button
-                key={url}
-                onClick={() => setSelectedUrl(url)}
-                className={`shrink-0 h-[30px] px-3 rounded-full font-mono font-medium text-[12px] border transition-colors ${
-                  selectedUrl === url
-                    ? 'bg-accent-soft text-accent border-accent'
-                    : 'bg-s2 text-muted border-border hover:border-bs'
-                }`}
-              >
-                {path}
-              </button>
-            );
-          })}
-        </div>
+        <MetricSection
+          label="All routes"
+          snapshots={snapshots}
+          history={history}
+        />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {vitals.map((key) => (
-          <VitalCard
-            key={`${key}-${selectedUrl || 'all'}`}
-            vitalKey={key}
-            history={filteredHistory}
-            currentP75={getCurrentP75(key)}
+      {allUrls.map((url) => {
+        const path = url.replace(/^https?:\/\/[^/]+/, '') || '/';
+        return (
+          <MetricSection
+            key={url}
+            label={path}
+            snapshots={snapshots.filter((s) => s.URL === url)}
+            history={history.filter((s) => s.URL === url)}
           />
-        ))}
-      </div>
+        );
+      })}
 
       <LogPanel logs={logs} />
     </div>

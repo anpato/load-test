@@ -35,12 +35,6 @@ export const options = {
       },
     },
   },
-  thresholds: {
-    browser_web_vital_lcp: ['p(75) < 2500'],
-    browser_web_vital_fcp: ['p(75) < 1800'],
-    browser_web_vital_cls: ['p(75) < 0.1'],
-    browser_web_vital_ttfb: ['p(75) < 800'],
-  },
 };
 
 export function setup() {
