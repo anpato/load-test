@@ -95,21 +95,10 @@ trackUrl(page.url());
 
 await new Promise((resolve) => {
   let done = false;
-  const finish = () => { process.stderr.write('[discover] close detected\n'); if (!done) { done = true; resolve(); } };
-
-  browser.on('disconnected', finish);
-  context.on('close', finish);
-
-  // Track all pages — when count drops to zero, user closed the window
-  const pages = new Set(context.pages());
-  for (const p of pages) p.on('close', () => { pages.delete(p); if (pages.size === 0) finish(); });
-  context.on('page', (p) => {
-    pages.add(p);
-    p.on('close', () => { pages.delete(p); if (pages.size === 0) finish(); });
-    p.on('framenavigated', (frame) => {
-      if (frame === p.mainFrame()) trackUrl(frame.url());
-    });
-  });
+  const finish = () => { if (!done) { done = true; resolve(); } };
+  page.on('close', () => { process.stderr.write('[discover] page closed\n'); finish(); });
+  context.on('close', () => { process.stderr.write('[discover] context closed\n'); finish(); });
+  browser.on('disconnected', () => { process.stderr.write('[discover] browser disconnected\n'); finish(); });
 });
 
 const urls = [...discovered].sort();
