@@ -28,6 +28,9 @@ setup: check
 	@cd frontend && npx playwright install chromium 2>/dev/null
 	@echo "  ✓ Test browser installed"
 	@echo ""
+	@echo "  → air (hot reload, optional)"
+	@command -v air >/dev/null 2>&1 || (go install github.com/air-verse/air@latest 2>/dev/null && echo "  ✓ air installed" || echo "  ! air install failed — dev will use go run instead")
+	@echo ""
 	@echo "  Verifying build..."
 	@go build ./...
 	@echo "  ✓ Go build OK"
@@ -60,12 +63,18 @@ check:
 # ──────────────────────────────────────────────
 
 dev:
-	@echo "Starting backend (air) + frontend (vite)..."
+	@echo "Starting backend + frontend..."
 	@make dev-backend &
 	@make dev-frontend
 
 dev-backend:
-	air
+	@mkdir -p tmp
+	@if command -v air >/dev/null 2>&1; then \
+		air; \
+	else \
+		echo "air not found, using go run (no hot reload)"; \
+		go run ./cmd/server; \
+	fi
 
 dev-frontend:
 	cd frontend && npm run dev
