@@ -1,0 +1,32 @@
+bin/
+tmp/
+*.db
+*.db-wal
+*.db-shm
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
+frontend/screenshots/
+frontend/test-results/
+
+# Root node (playwright for recorder/crawler scripts)
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# k6 output
+/tmp/k6-*.ndjson
+
+# Test artifacts
+test-results/
+stderr
