@@ -17,7 +17,7 @@ const page = await context.newPage();
 
 if (auth && auth.type === 'cookie' && auth.cookie) {
   process.stderr.write(`[discover] logging in at ${auth.cookie.loginUrl}\n`);
-  await page.goto(auth.cookie.loginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(auth.cookie.loginUrl, { waitUntil: 'networkidle', timeout: 120000 });
 
   for (const step of auth.cookie.steps) {
     if (step.action === 'fill') {
@@ -28,7 +28,7 @@ if (auth && auth.type === 'cookie' && auth.cookie) {
     if (step.waitFor === 'networkidle') {
       await page.waitForLoadState('networkidle');
     } else if (step.waitFor === 'navigation') {
-      await page.waitForNavigation({ timeout: 15000 });
+      await page.waitForNavigation({ timeout: 120000 });
     }
   }
   await page.waitForLoadState('networkidle');
@@ -90,7 +90,7 @@ context.on('page', (newPage) => {
 
 process.stderr.write(`[discover] opening ${baseUrl} — click around to discover routes, then close the browser\n`);
 
-await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
 trackUrl(page.url());
 
 await new Promise((resolve) => {

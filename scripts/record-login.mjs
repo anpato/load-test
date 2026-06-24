@@ -144,7 +144,7 @@ page.on('load', async () => {
 
 process.stderr.write(`[recorder] opening ${loginURL} — interact with the login form, then close the tab\n`);
 
-await page.goto(loginURL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+await page.goto(loginURL, { waitUntil: 'domcontentloaded', timeout: 120000 });
 
 await new Promise((resolve) => {
   let done = false;

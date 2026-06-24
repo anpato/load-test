@@ -89,7 +89,7 @@ async function ensureCookieAuth(page) {
 
   const cfg = authConfig.cookie;
   console.log(`[VU ${__VU}] cookie auth: navigating to ${cfg.loginUrl}`);
-  await page.goto(cfg.loginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(cfg.loginUrl, { waitUntil: 'networkidle', timeout: 120000 });
 
   for (let i = 0; i < cfg.steps.length; i++) {
     const step = cfg.steps[i];
@@ -106,7 +106,7 @@ async function ensureCookieAuth(page) {
       await page.waitForLoadState('networkidle');
     } else if (step.waitFor === 'navigation') {
       console.log(`[VU ${__VU}] waiting for navigation...`);
-      await page.waitForNavigation({ timeout: 15000 });
+      await page.waitForNavigation({ timeout: 120000 });
     }
   }
 
@@ -136,7 +136,7 @@ export default async function (data) {
     }
 
     console.log(`[VU ${__VU}][iter ${__ITER}] navigating to ${url}`);
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 120000 });
 
     const vitals = await page.evaluate(() => {
       return new Promise((resolve) => {

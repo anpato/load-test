@@ -285,10 +285,21 @@ export default function LiveDashboard({
   connected,
   onStop,
 }: Props) {
+  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const vitals: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
 
+  const allUrls = [...new Set(history.map((s) => s.URL).filter(Boolean))].sort();
+
+  const filteredSnapshots = selectedUrl
+    ? snapshots.filter((s) => s.URL === selectedUrl)
+    : snapshots;
+
+  const filteredHistory = selectedUrl
+    ? history.filter((s) => s.URL === selectedUrl)
+    : history;
+
   function getCurrentP75(key: VitalKey): number | null {
-    const matches = snapshots.filter((s) =>
+    const matches = filteredSnapshots.filter((s) =>
       s.Metric.toLowerCase().includes(key)
     );
     if (matches.length === 0) return null;
@@ -298,7 +309,7 @@ export default function LiveDashboard({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div className="flex items-center gap-2">
           <span
             className="inline-block rounded-full"
@@ -314,6 +325,9 @@ export default function LiveDashboard({
           <span className="font-bold text-[15px] text-fg">
             {connected ? 'Connected' : 'Connecting...'}
           </span>
+          <span className="font-mono text-[12px] text-subtle">
+            {allUrls.length} URL{allUrls.length !== 1 ? 's' : ''}
+          </span>
         </div>
         <button
           onClick={onStop}
@@ -323,12 +337,43 @@ export default function LiveDashboard({
         </button>
       </div>
 
+      {allUrls.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setSelectedUrl(null)}
+            className={`shrink-0 h-[30px] px-3 rounded-full font-semibold text-[12px] border transition-colors ${
+              selectedUrl === null
+                ? 'bg-accent-soft text-accent border-accent'
+                : 'bg-s2 text-muted border-border hover:border-bs'
+            }`}
+          >
+            All routes
+          </button>
+          {allUrls.map((url) => {
+            const path = url.replace(/^https?:\/\/[^/]+/, '') || '/';
+            return (
+              <button
+                key={url}
+                onClick={() => setSelectedUrl(url)}
+                className={`shrink-0 h-[30px] px-3 rounded-full font-mono font-medium text-[12px] border transition-colors ${
+                  selectedUrl === url
+                    ? 'bg-accent-soft text-accent border-accent'
+                    : 'bg-s2 text-muted border-border hover:border-bs'
+                }`}
+              >
+                {path}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {vitals.map((key) => (
           <VitalCard
-            key={key}
+            key={`${key}-${selectedUrl || 'all'}`}
             vitalKey={key}
-            history={history}
+            history={filteredHistory}
             currentP75={getCurrentP75(key)}
           />
         ))}
