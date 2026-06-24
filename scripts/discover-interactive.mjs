@@ -42,33 +42,43 @@ async function doLogin(p) {
 
   try {
     await p.goto(cfg.loginUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await p.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   } catch (err) {
     process.stderr.write(`[discover] login page load: ${err.message}\n`);
     return;
   }
 
-  for (const step of cfg.steps) {
+  for (let i = 0; i < cfg.steps.length; i++) {
+    const step = cfg.steps[i];
+    process.stderr.write(`[discover] login step ${i + 1}/${cfg.steps.length}: ${step.action} "${step.selector}"\n`);
     try {
+      const loc = p.locator(step.selector);
+      await loc.waitFor({ state: 'visible', timeout: 10000 });
+
       if (step.action === 'fill') {
-        await p.locator(step.selector).fill(step.value);
+        await loc.fill(step.value);
+        process.stderr.write(`[discover]   filled with "${step.value.substring(0, 20)}${step.value.length > 20 ? '...' : ''}"\n`);
       } else if (step.action === 'click') {
-        await p.locator(step.selector).click();
+        await loc.click();
+        process.stderr.write(`[discover]   clicked\n`);
       }
+
       if (step.waitFor === 'networkidle') {
-        await p.waitForLoadState('networkidle').catch(() => {});
+        await p.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
       } else if (step.waitFor === 'navigation') {
         await p.waitForNavigation({ timeout: 120000 }).catch(() => {});
       }
     } catch (err) {
-      process.stderr.write(`[discover] login step failed: ${err.message}\n`);
+      process.stderr.write(`[discover]   FAILED: ${err.message}\n`);
+      process.stderr.write(`[discover]   selector "${step.selector}" may be dynamic — try re-recording the login flow\n`);
     }
   }
 
   try {
-    await p.waitForLoadState('networkidle', { timeout: 10000 });
+    await p.waitForLoadState('networkidle', { timeout: 15000 });
   } catch {}
 
-  process.stderr.write('[discover] login complete\n');
+  process.stderr.write(`[discover] login complete, now at: ${p.url()}\n`);
 }
 
 // Get the initial page and optionally log in

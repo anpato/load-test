@@ -18,22 +18,31 @@ const page = await context.newPage();
 
 if (auth && auth.type === 'cookie' && auth.cookie) {
   process.stderr.write(`[crawl] logging in at ${auth.cookie.loginUrl}\n`);
-  await page.goto(auth.cookie.loginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(auth.cookie.loginUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-  for (const step of auth.cookie.steps) {
-    if (step.action === 'fill') {
-      await page.locator(step.selector).fill(step.value);
-    } else if (step.action === 'click') {
-      await page.locator(step.selector).click();
-    }
-    if (step.waitFor === 'networkidle') {
-      await page.waitForLoadState('networkidle');
-    } else if (step.waitFor === 'navigation') {
-      await page.waitForNavigation({ timeout: 15000 });
+  for (let i = 0; i < auth.cookie.steps.length; i++) {
+    const step = auth.cookie.steps[i];
+    process.stderr.write(`[crawl] login step ${i + 1}/${auth.cookie.steps.length}: ${step.action} "${step.selector}"\n`);
+    try {
+      const loc = page.locator(step.selector);
+      await loc.waitFor({ state: 'visible', timeout: 10000 });
+      if (step.action === 'fill') {
+        await loc.fill(step.value);
+      } else if (step.action === 'click') {
+        await loc.click();
+      }
+      if (step.waitFor === 'networkidle') {
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+      } else if (step.waitFor === 'navigation') {
+        await page.waitForNavigation({ timeout: 120000 }).catch(() => {});
+      }
+    } catch (err) {
+      process.stderr.write(`[crawl]   FAILED: ${err.message}\n`);
     }
   }
-  await page.waitForLoadState('networkidle');
-  process.stderr.write('[crawl] login complete\n');
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  process.stderr.write(`[crawl] login complete, now at: ${page.url()}\n`);
 } else if (auth && auth.type === 'bearer' && auth.bearer) {
   const token = auth.bearer.token || '';
   if (token) {
