@@ -19,6 +19,7 @@ func SetupRoutes(server *Server, frontendFS fs.FS) http.Handler {
 	mux.HandleFunc("DELETE /api/runs/{id}", server.HandleStopRun)
 	mux.HandleFunc("POST /api/runs/{id}/rerun", server.HandleRerun)
 	mux.HandleFunc("POST /api/crawl/interactive", server.HandleInteractiveCrawl)
+	mux.HandleFunc("GET /api/sessions/{id}", server.HandleSessionStatus)
 	mux.HandleFunc("POST /api/auth/record", server.HandleRecordLogin)
 
 	outer := http.NewServeMux()

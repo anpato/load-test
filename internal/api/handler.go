@@ -19,20 +19,29 @@ import (
 	"github.com/anpato/load-test/internal/store"
 )
 
+type interactiveSession struct {
+	Status string          `json:"status"`
+	URLs   []string        `json:"urls,omitempty"`
+	Steps  []auth.LoginStep `json:"steps,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
 type Server struct {
-	store   *store.Store
-	runner  *k6.Runner
-	hub     *Hub
-	cancels map[string]context.CancelFunc
-	mu      sync.Mutex
+	store    *store.Store
+	runner   *k6.Runner
+	hub      *Hub
+	cancels  map[string]context.CancelFunc
+	sessions map[string]*interactiveSession
+	mu       sync.Mutex
 }
 
 func NewServer(s *store.Store, runner *k6.Runner) *Server {
 	return &Server{
-		store:   s,
-		runner:  runner,
-		hub:     NewHub(),
-		cancels: make(map[string]context.CancelFunc),
+		store:    s,
+		runner:   runner,
+		hub:      NewHub(),
+		cancels:  make(map[string]context.CancelFunc),
+		sessions: make(map[string]*interactiveSession),
 	}
 }
 
@@ -362,15 +371,49 @@ func (s *Server) HandleInteractiveCrawl(w http.ResponseWriter, r *http.Request) 
 
 	log.Printf("[api] interactive crawl: url=%s authJson=%d bytes", req.URL, len(req.AuthJSON))
 
-	urls, err := crawler.InteractiveCrawl(r.Context(), req.URL, req.AuthJSON)
+	sessionID, err := generateID()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to generate session ID")
 		return
 	}
+	s.mu.Lock()
+	s.sessions[sessionID] = &interactiveSession{Status: "running"}
+	s.mu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"urls": urls,
+	go func() {
+		urls, err := crawler.InteractiveCrawl(context.Background(), req.URL, req.AuthJSON)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		sess := s.sessions[sessionID]
+		if err != nil {
+			sess.Status = "error"
+			sess.Error = err.Error()
+		} else {
+			sess.Status = "done"
+			sess.URLs = urls
+		}
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"sessionId": sessionID,
 	})
+}
+
+func (s *Server) HandleSessionStatus(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.mu.Lock()
+	sess, ok := s.sessions[id]
+	s.mu.Unlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, sess)
+	if sess.Status != "running" {
+		s.mu.Lock()
+		delete(s.sessions, id)
+		s.mu.Unlock()
+	}
 }
 
 func (s *Server) HandleRerun(w http.ResponseWriter, r *http.Request) {
@@ -402,15 +445,31 @@ func (s *Server) HandleRecordLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	steps, err := recorder.Record(r.Context(), req.LoginURL)
+	sessionID, err := generateID()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to generate session ID")
 		return
 	}
+	s.mu.Lock()
+	s.sessions[sessionID] = &interactiveSession{Status: "running"}
+	s.mu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"steps":    steps,
-		"loginUrl": req.LoginURL,
+	go func() {
+		steps, err := recorder.Record(context.Background(), req.LoginURL)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		sess := s.sessions[sessionID]
+		if err != nil {
+			sess.Status = "error"
+			sess.Error = err.Error()
+		} else {
+			sess.Status = "done"
+			sess.Steps = steps
+		}
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"sessionId": sessionID,
 	})
 }
 
