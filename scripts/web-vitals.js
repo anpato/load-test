@@ -141,10 +141,12 @@ export default async function (data) {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 120000 });
 
     if (authConfig.type === 'cookie' && authConfig.cookie?.loginUrl) {
-      const loginPath = new URL(authConfig.cookie.loginUrl).pathname;
-      const currentPath = new URL(page.url()).pathname;
-      if (currentPath === loginPath && url !== authConfig.cookie.loginUrl) {
-        throw new Error(`Redirected to login — auth may have failed (landed on ${page.url()})`);
+      const loginUrl = authConfig.cookie.loginUrl;
+      const loginPath = loginUrl.replace(/^https?:\/\/[^/]+/, '');
+      const currentUrl = page.url();
+      const currentPath = currentUrl.replace(/^https?:\/\/[^/]+/, '');
+      if (currentPath === loginPath && url !== loginUrl) {
+        throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
       }
     }
 
