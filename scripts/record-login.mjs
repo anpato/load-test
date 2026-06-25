@@ -14,35 +14,77 @@ function buildInitScript() {
       if (window.__recorderInstalled) return;
       window.__recorderInstalled = true;
 
+      function isStableId(id) {
+        if (!id) return false;
+        if (/^:r\w+:/.test(id)) return false;
+        if (/^react-/.test(id)) return false;
+        if (/^radix-/.test(id)) return false;
+        if (/^headlessui-/.test(id)) return false;
+        if (/^mui-/.test(id)) return false;
+        if (/[0-9a-f]{8,}/.test(id)) return false;
+        if (/^\d+$/.test(id)) return false;
+        if (/^ember\d+/.test(id)) return false;
+        if (/--\d+$/.test(id)) return false;
+        return true;
+      }
+
       function cssSelector(el) {
         if (!el || !el.tagName) return null;
+        var tag = el.tagName.toLowerCase();
 
-        if (el.id) return '#' + CSS.escape(el.id);
+        // Stable test attributes (highest priority)
+        var testId = el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-cy');
+        if (testId) return '[data-testid="' + CSS.escape(testId) + '"]';
 
-        if (el.tagName === 'INPUT' && el.name)
-          return 'input[name="' + CSS.escape(el.name) + '"]';
+        // Name attribute on form elements
+        if ((tag === 'input' || tag === 'textarea' || tag === 'select') && el.name)
+          return tag + '[name="' + CSS.escape(el.name) + '"]';
 
-        if (el.tagName === 'TEXTAREA' && el.name)
-          return 'textarea[name="' + CSS.escape(el.name) + '"]';
+        // Stable IDs only (skip framework-generated dynamic IDs)
+        if (el.id && isStableId(el.id)) return '#' + CSS.escape(el.id);
 
-        if (el.getAttribute('data-testid'))
-          return '[data-testid="' + CSS.escape(el.getAttribute('data-testid')) + '"]';
-
+        // ARIA attributes
         if (el.getAttribute('aria-label'))
-          return '[aria-label="' + CSS.escape(el.getAttribute('aria-label')) + '"]';
+          return tag + '[aria-label="' + CSS.escape(el.getAttribute('aria-label')) + '"]';
 
-        if (el.tagName === 'INPUT' && el.placeholder)
-          return 'input[placeholder="' + CSS.escape(el.placeholder) + '"]';
-
-        if (el.tagName === 'INPUT' && el.type)
-          return 'input[type="' + el.type + '"]';
-
-        if (el.tagName === 'BUTTON') {
-          var text = el.textContent.trim().substring(0, 30);
-          if (text) return 'button';
+        // Role-based selectors
+        var role = el.getAttribute('role');
+        if (role) {
+          var roleText = el.textContent.trim().substring(0, 30);
+          if (roleText) return '[role="' + role + '"]';
         }
 
-        var tag = el.tagName.toLowerCase();
+        // Input type + placeholder combo
+        if (tag === 'input' && el.placeholder)
+          return 'input[placeholder="' + CSS.escape(el.placeholder) + '"]';
+
+        // Input by type (with nth-of-type if ambiguous)
+        if (tag === 'input' && el.type && el.type !== 'text') {
+          var sameType = document.querySelectorAll('input[type="' + el.type + '"]');
+          if (sameType.length === 1) return 'input[type="' + el.type + '"]';
+          var typeIdx = Array.from(sameType).indexOf(el);
+          return 'input[type="' + el.type + '"]:nth-of-type(' + (typeIdx + 1) + ')';
+        }
+
+        // Button by text content
+        if (tag === 'button' || (el.getAttribute('type') === 'submit')) {
+          var btnText = el.textContent.trim().substring(0, 40);
+          if (btnText) {
+            var matches = document.querySelectorAll(tag);
+            var textMatches = Array.from(matches).filter(function(b) {
+              return b.textContent.trim().substring(0, 40) === btnText;
+            });
+            if (textMatches.length === 1) return 'text="' + btnText + '"';
+          }
+        }
+
+        // Link by text
+        if (tag === 'a') {
+          var linkText = el.textContent.trim().substring(0, 40);
+          if (linkText) return 'a >> text="' + linkText + '"';
+        }
+
+        // Positional fallback
         var parent = el.parentElement;
         if (parent) {
           var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === el.tagName; });
