@@ -88,8 +88,13 @@ build: build-frontend build-backend
 build-frontend:
 	cd frontend && npm run build
 
-build-backend:
+build-backend: embed-frontend
 	go build -o bin/load-test ./cmd/server
+	rm -rf cmd/server/dist
+
+embed-frontend:
+	rm -rf cmd/server/dist
+	cp -r frontend/dist cmd/server/dist
 
 # ──────────────────────────────────────────────
 # Test

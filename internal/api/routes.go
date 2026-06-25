@@ -1,13 +1,14 @@
 package api
 
 import (
+	"io/fs"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 )
 
-func SetupRoutes(server *Server) http.Handler {
+func SetupRoutes(server *Server, frontendFS fs.FS) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/crawl", server.HandleCrawl)
@@ -20,13 +21,26 @@ func SetupRoutes(server *Server) http.Handler {
 	mux.HandleFunc("POST /api/crawl/interactive", server.HandleInteractiveCrawl)
 	mux.HandleFunc("POST /api/auth/record", server.HandleRecordLogin)
 
-	// WebSocket handler bypasses CORS/logging middleware since
-	// responseCapture doesn't implement http.Hijacker.
 	outer := http.NewServeMux()
 	outer.Handle("GET /api/runs/{id}/ws", http.HandlerFunc(server.HandleWebSocket))
-	outer.Handle("/", loggingMiddleware(corsMiddleware(mux)))
+	outer.Handle("/api/", loggingMiddleware(corsMiddleware(mux)))
+	outer.Handle("/", spaHandler(frontendFS))
 
 	return outer
+}
+
+func spaHandler(frontendFS fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(frontendFS))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		if _, err := fs.Stat(frontendFS, path); err != nil {
+			r.URL.Path = "/"
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

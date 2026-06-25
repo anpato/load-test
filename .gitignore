@@ -6,6 +6,7 @@ tmp/
 
 # Frontend
 frontend/dist/
+cmd/server/dist/
 frontend/node_modules/
 frontend/screenshots/
 frontend/test-results/
