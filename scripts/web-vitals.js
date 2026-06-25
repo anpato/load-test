@@ -222,8 +222,9 @@ export default async function (data) {
     customTTFB.add(vitals.ttfb, { url: url });
     successRate.add(1);
   } catch (err) {
-    console.error(`[VU ${__VU}][iter ${__ITER}] ERROR on ${url}: ${err.message}`);
-    pageErrors.add(1, { url: url, error: err.message });
+    const errMsg = String(err?.message || err || 'unknown');
+    console.error(`[VU ${__VU}][iter ${__ITER}] ERROR on ${url}: ${errMsg}`);
+    pageErrors.add(1, { url: url, error: errMsg });
     successRate.add(0);
   } finally {
     await page.close();
