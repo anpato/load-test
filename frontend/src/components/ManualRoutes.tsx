@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { expandRoutes } from '../lib/api';
 import type { Route } from '../lib/types';
+import { ensureProtocol } from '../lib/url';
 
 interface ManualRoutesProps {
   baseUrl: string;
@@ -95,6 +96,7 @@ export function ManualRoutes({ baseUrl, onBaseUrlChange, onRoutes }: ManualRoute
             type="url"
             value={baseUrl}
             onChange={(e) => onBaseUrlChange(e.target.value)}
+            onBlur={() => onBaseUrlChange(ensureProtocol(baseUrl))}
             placeholder="https://example.com"
             className="w-full h-[38px] px-3 bg-s2 border border-border rounded-[4px] text-fg font-mono font-medium text-[13.5px] outline-none focus:border-accent focus:bg-surface"
           />

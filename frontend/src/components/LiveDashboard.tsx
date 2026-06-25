@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts';
 import type { MetricSnapshot, VitalKey } from '../lib/types';
 import {
   VITAL_META,
+  VITAL_THRESHOLDS,
+  formatVital,
   getVitalRating,
   ratingCssColor,
   ratingLabel,
-  formatVital,
 } from '../lib/types';
 
 interface Props {
@@ -16,148 +27,181 @@ interface Props {
   onStop: () => void;
 }
 
+const VITALS: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
+const CHART_VITALS: VitalKey[] = ['lcp', 'fcp', 'ttfb'];
+
+const LINE_COLORS = [
+  '#22c55e',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#84cc16',
+  '#f97316',
+  '#14b8a6',
+  '#e11d48',
+  '#6366f1',
+];
+
+function shortPath(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const segs = path.split('/').filter(Boolean);
+    if (segs.length === 0) return '/';
+    return '/' + segs[segs.length - 1];
+  } catch {
+    return url;
+  }
+}
+
 function RatingPill({ rating }: { rating: 'good' | 'needs-improvement' | 'poor' }) {
   const color = ratingCssColor(rating);
   return (
     <span
       className="inline-flex items-center px-2 py-0.5 rounded-full font-semibold text-[10.5px]"
-      style={{
-        color,
-        background: `color-mix(in srgb, ${color} 14%, transparent)`,
-      }}
+      style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}
     >
       {ratingLabel(rating)}
     </span>
   );
 }
 
-function Sparkline({
-  data,
-  rating,
-}: {
-  data: number[];
-  rating: 'good' | 'needs-improvement' | 'poor';
-}) {
-  const color = ratingCssColor(rating);
-  const W = 200;
-  const H = 56;
-  const PAD = 4;
-
-  if (data.length < 2) {
-    return (
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 72 }}>
-        <line
-          x1={PAD}
-          y1={H / 2}
-          x2={W - PAD}
-          y2={H / 2}
-          stroke={color}
-          strokeWidth="1"
-          strokeDasharray="4 3"
-          opacity="0.3"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-    );
-  }
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-
-  const points = data.map((v, i) => {
-    const x = PAD + (i / (data.length - 1)) * (W - PAD * 2);
-    const y = PAD + (1 - (v - min) / range) * (H - PAD * 2);
-    return [x, y] as [number, number];
-  });
-
-  const d = points
-    .map(([x, y], i) => (i === 0 ? `M${x},${y}` : `L${x},${y}`))
-    .join(' ');
-
-  const areaD =
-    `M${points[0][0]},${H - PAD} ` +
-    points.map(([x, y]) => `L${x},${y}`).join(' ') +
-    ` L${points[points.length - 1][0]},${H - PAD} Z`;
-
-  const [lastX, lastY] = points[points.length - 1];
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 72 }}>
-      <defs>
-        <linearGradient id={`grad-${rating}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.12" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.01" />
-        </linearGradient>
-      </defs>
-      <path
-        d={areaD}
-        fill={`url(#grad-${rating})`}
-        style={{ transition: 'd 0.3s ease' }}
-      />
-      <path
-        d={d}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-        style={{ transition: 'd 0.3s ease' }}
-      />
-      <circle
-        cx={lastX}
-        cy={lastY}
-        r="3"
-        fill={color}
-        style={{ transition: 'cx 0.3s ease, cy 0.3s ease' }}
-      />
-      <circle
-        cx={lastX}
-        cy={lastY}
-        r="6"
-        fill={color}
-        opacity="0.15"
-        style={{ transition: 'cx 0.3s ease, cy 0.3s ease' }}
-      />
-    </svg>
-  );
+function getAvgP75(history: MetricSnapshot[], vital: VitalKey): number | null {
+  const matches = history.filter((s) => s.Metric.toLowerCase().includes(vital));
+  if (matches.length === 0) return null;
+  const byUrl = new Map<string, number>();
+  for (const s of matches) byUrl.set(s.URL, s.P75);
+  const vals = [...byUrl.values()];
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-function VitalCard({
-  vitalKey,
-  history,
-  currentP75,
-}: {
-  vitalKey: VitalKey;
-  history: MetricSnapshot[];
-  currentP75: number | null;
-}) {
-  const meta = VITAL_META[vitalKey];
-  const rating =
-    currentP75 !== null ? getVitalRating(vitalKey, currentP75) : 'good';
+interface ChartPoint {
+  time: string;
+  avg: number | null;
+  [url: string]: number | null | string;
+}
 
-  const sparkData = history
-    .filter((s) => s.Metric.toLowerCase().includes(vitalKey))
-    .map((s) => s.P75);
+function buildChartData(
+  history: MetricSnapshot[],
+  vital: VitalKey,
+  urls: string[]
+): ChartPoint[] {
+  const byTime = new Map<string, Map<string, number>>();
+  for (const snap of history) {
+    if (!snap.Metric.toLowerCase().includes(vital)) continue;
+    const t = snap.Timestamp;
+    if (!byTime.has(t)) byTime.set(t, new Map());
+    byTime.get(t)!.set(snap.URL, snap.P75);
+  }
+  const points: ChartPoint[] = [];
+  let idx = 0;
+  for (const [, urlMap] of byTime) {
+    idx++;
+    const point: ChartPoint = { time: String(idx), avg: null };
+    let sum = 0;
+    let count = 0;
+    for (const url of urls) {
+      const val = urlMap.get(url) ?? null;
+      point[url] = val;
+      if (val !== null) { sum += val; count++; }
+    }
+    point.avg = count > 0 ? sum / count : null;
+    points.push(point);
+  }
+  return points;
+}
+
+function VitalChart({
+  vital,
+  history,
+  urls,
+}: {
+  vital: VitalKey;
+  history: MetricSnapshot[];
+  urls: string[];
+}) {
+  const meta = VITAL_META[vital];
+  const data = buildChartData(history, vital, urls);
 
   return (
-    <div className="bg-surface border border-border rounded-[8px] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-mono font-bold text-[13px] tracking-wide text-fg">
-          {meta.label}
+    <div className="bg-surface border border-border rounded-[8px] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <span className="font-mono font-bold text-[14px] tracking-wide text-fg">
+          {meta.label} p75
+        </span>
+        <span className="text-[11px] text-subtle font-mono">
+          {meta.good} · {meta.poor}
         </span>
       </div>
-
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="font-mono font-semibold text-[26px] text-fg">
-          {currentP75 !== null ? formatVital(vitalKey, currentP75) : '—'}
-        </span>
-        <span className="text-[11px] text-subtle">p75</span>
-        {currentP75 !== null && <RatingPill rating={rating} />}
-      </div>
-
-      <Sparkline data={sparkData} rating={rating} />
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--color-border)"
+            strokeOpacity={0.5}
+            vertical={false}
+          />
+          <XAxis
+            dataKey="time"
+            tick={{ fontSize: 10, fill: 'var(--color-subtle)' }}
+            axisLine={{ stroke: 'var(--color-border)' }}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: 'var(--color-subtle)' }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v: number) => `${Math.round(v)}`}
+            width={48}
+          />
+          <Tooltip
+            contentStyle={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8,
+              fontSize: 12,
+              fontFamily: 'var(--font-mono, monospace)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            }}
+            formatter={(value: unknown, name: unknown) => [
+              formatVital(vital, Number(value)),
+              String(name) === 'avg' ? 'Average' : shortPath(String(name)),
+            ]}
+            labelFormatter={(label) => `Snapshot ${label}`}
+          />
+          <Legend
+            formatter={(value: string) =>
+              value === 'avg' ? 'Average' : shortPath(value)
+            }
+            wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-mono, monospace)', paddingTop: 8 }}
+            iconType="plainline"
+          />
+          {urls.map((url, i) => (
+            <Line
+              key={url}
+              type="monotone"
+              dataKey={url}
+              stroke={LINE_COLORS[i % LINE_COLORS.length]}
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+              name={url}
+              animationDuration={300}
+            />
+          ))}
+          <Line
+            type="monotone"
+            dataKey="avg"
+            stroke="var(--color-fg)"
+            strokeWidth={2.5}
+            dot={false}
+            connectNulls
+            name="avg"
+            strokeDasharray="6 3"
+            animationDuration={300}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -176,8 +220,7 @@ function LogPanel({ logs }: { logs: string[] }) {
   function handleScroll() {
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 40;
-    setAutoScroll(atBottom);
+    setAutoScroll(scrollHeight - scrollTop - clientHeight < 40);
   }
 
   const filtered = filter
@@ -185,10 +228,8 @@ function LogPanel({ logs }: { logs: string[] }) {
     : logs;
 
   function lineColor(line: string): string {
-    const lower = line.toLowerCase();
-    if (lower.includes('setup') || lower.includes('teardown')) {
+    if (line.toLowerCase().includes('setup') || line.toLowerCase().includes('teardown'))
       return 'var(--color-terminal-dim)';
-    }
     return 'var(--color-terminal-text)';
   }
 
@@ -207,10 +248,7 @@ function LogPanel({ logs }: { logs: string[] }) {
           borderColor: 'var(--color-terminal-border)',
         }}
       >
-        <span
-          className="font-mono font-bold text-[12px] shrink-0"
-          style={{ color: 'var(--color-terminal-dim)' }}
-        >
+        <span className="font-mono font-bold text-[12px] shrink-0" style={{ color: 'var(--color-terminal-dim)' }}>
           k6 output
         </span>
         <input
@@ -225,22 +263,15 @@ function LogPanel({ logs }: { logs: string[] }) {
             color: 'var(--color-terminal-input)',
           }}
         />
-        <span
-          className="font-mono text-[11px] shrink-0"
-          style={{ color: 'var(--color-terminal-dim)' }}
-        >
+        <span className="font-mono text-[11px] shrink-0" style={{ color: 'var(--color-terminal-dim)' }}>
           {filtered.length} lines
         </span>
         <button
           onClick={() => setAutoScroll((v) => !v)}
           className="font-mono font-semibold text-[11px] px-2 py-0.5 rounded-full shrink-0 transition-colors"
           style={{
-            color: autoScroll
-              ? 'var(--color-terminal-accent)'
-              : 'var(--color-terminal-dim)',
-            background: autoScroll
-              ? 'color-mix(in srgb, var(--color-terminal-accent) 12%, transparent)'
-              : 'transparent',
+            color: autoScroll ? 'var(--color-terminal-accent)' : 'var(--color-terminal-dim)',
+            background: autoScroll ? 'color-mix(in srgb, var(--color-terminal-accent) 12%, transparent)' : 'transparent',
           }}
         >
           {autoScroll ? 'Following' : 'Paused'}
@@ -249,23 +280,16 @@ function LogPanel({ logs }: { logs: string[] }) {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-[240px] overflow-y-auto p-[10px_13px]"
+        className="h-[200px] overflow-y-auto p-[10px_13px]"
         style={{ background: 'var(--color-terminal-bg)' }}
       >
         {filtered.length === 0 ? (
-          <span
-            className="font-mono text-[12.5px]"
-            style={{ color: 'var(--color-terminal-muted)' }}
-          >
+          <span className="font-mono text-[12.5px]" style={{ color: 'var(--color-terminal-muted)' }}>
             Waiting for output...
           </span>
         ) : (
           filtered.map((line, i) => (
-            <div
-              key={i}
-              className="font-mono text-[12.5px] leading-relaxed"
-              style={{ color: lineColor(line) }}
-            >
+            <div key={i} className="font-mono text-[12.5px] leading-relaxed" style={{ color: lineColor(line) }}>
               {line}
             </div>
           ))
@@ -275,42 +299,8 @@ function LogPanel({ logs }: { logs: string[] }) {
   );
 }
 
-function MetricSection({
-  label,
-  snapshots,
-  history,
-}: {
-  label: string;
-  snapshots: MetricSnapshot[];
-  history: MetricSnapshot[];
-}) {
-  const vitals: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
-
-  function getP75(key: VitalKey): number | null {
-    const matches = snapshots.filter((s) => s.Metric.toLowerCase().includes(key));
-    if (matches.length === 0) return null;
-    return matches.reduce((sum, s) => sum + s.P75, 0) / matches.length;
-  }
-
-  return (
-    <div className="space-y-2">
-      <h3 className="font-mono font-semibold text-[13px] text-muted truncate">{label}</h3>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {vitals.map((key) => (
-          <VitalCard
-            key={key}
-            vitalKey={key}
-            history={history}
-            currentP75={getP75(key)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function LiveDashboard({
-  snapshots,
+  snapshots: _snapshots,
   history,
   logs,
   connected,
@@ -327,9 +317,7 @@ export default function LiveDashboard({
             style={{
               width: 9,
               height: 9,
-              background: connected
-                ? 'var(--color-accent)'
-                : 'var(--color-bad)',
+              background: connected ? 'var(--color-accent)' : 'var(--color-bad)',
               animation: connected ? 'pulse-dot 1.4s infinite' : undefined,
             }}
           />
@@ -348,25 +336,52 @@ export default function LiveDashboard({
         </button>
       </div>
 
-      {allUrls.length > 1 && (
-        <MetricSection
-          label="All routes"
-          snapshots={snapshots}
-          history={history}
-        />
-      )}
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {VITALS.map((v) => {
+          const val = getAvgP75(history, v);
+          const rating = val !== null ? getVitalRating(v, val) : 'good';
+          const thresh = VITAL_THRESHOLDS[v];
+          const pct = val !== null ? Math.min((val / thresh.needsImprovement) * 100, 100) : 0;
+          const color = val !== null ? ratingCssColor(rating) : 'var(--color-border)';
+          const meta = VITAL_META[v];
+          return (
+            <div key={v} className="bg-surface border border-border rounded-[8px] p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-mono font-bold text-[12px] tracking-wide text-fg">{meta.label}</span>
+                {val !== null && <RatingPill rating={rating} />}
+              </div>
+              <div className="flex items-baseline gap-1.5 mb-3">
+                <span className="font-mono font-semibold text-[28px] text-fg">
+                  {val !== null ? formatVital(v, val) : '—'}
+                </span>
+                <span className="text-[11px] text-subtle">p75</span>
+              </div>
+              <div className="h-[6px] bg-s2 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    background: color,
+                    transition: 'width 0.6s ease-out, background 0.3s ease',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="font-mono text-[10.5px] text-subtle">{meta.good}</span>
+                <span className="font-mono text-[10.5px] text-subtle">{meta.poor}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-      {allUrls.map((url) => {
-        const path = url.replace(/^https?:\/\/[^/]+/, '') || '/';
-        return (
-          <MetricSection
-            key={url}
-            label={path}
-            snapshots={snapshots.filter((s) => s.URL === url)}
-            history={history.filter((s) => s.URL === url)}
-          />
-        );
-      })}
+      {/* Charts stacked vertically */}
+      <div className="space-y-4">
+        {CHART_VITALS.map((vital) => (
+          <VitalChart key={vital} vital={vital} history={history} urls={allUrls} />
+        ))}
+      </div>
 
       <LogPanel logs={logs} />
     </div>

@@ -66,15 +66,15 @@ function buildInitScript() {
           return 'input[type="' + el.type + '"]:nth-of-type(' + (typeIdx + 1) + ')';
         }
 
-        // Button by text content
-        if (tag === 'button' || (el.getAttribute('type') === 'submit')) {
-          var btnText = el.textContent.trim().substring(0, 40);
-          if (btnText) {
-            var matches = document.querySelectorAll(tag);
-            var textMatches = Array.from(matches).filter(function(b) {
-              return b.textContent.trim().substring(0, 40) === btnText;
-            });
-            if (textMatches.length === 1) return 'text="' + btnText + '"';
+        // Button/submit: scope to parent form when possible
+        if (tag === 'button' || tag === 'input') {
+          var form = el.closest('form');
+          var btnType = el.getAttribute('type');
+          if (form && btnType === 'submit') {
+            var submits = form.querySelectorAll(tag + '[type="submit"]');
+            if (submits.length === 1) return 'form ' + tag + '[type="submit"]';
+            var idx = Array.from(submits).indexOf(el);
+            if (idx >= 0) return 'form ' + tag + '[type="submit"]:nth-of-type(' + (idx + 1) + ')';
           }
         }
 
@@ -168,9 +168,9 @@ await page.addInitScript(buildInitScript());
 page.on('framenavigated', (frame) => {
   if (frame === page.mainFrame() && steps.length > 0) {
     const last = steps[steps.length - 1];
-    if (last.waitFor !== 'networkidle') {
-      steps.push({ waitFor: 'networkidle' });
-      process.stderr.write(`[recorder] step ${steps.length}: waitFor networkidle (navigation)\n`);
+    if (last.action === 'click' && !last.waitFor) {
+      last.waitFor = 'navigation';
+      process.stderr.write(`[recorder] updated step ${steps.length}: waitFor navigation\n`);
     }
   }
 });

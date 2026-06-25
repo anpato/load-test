@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AuthConfig, LoginStep } from '../lib/types';
 import { recordLogin } from '../lib/api';
+import { ensureProtocol } from '../lib/url';
 
 interface AuthConfigProps {
   config: AuthConfig;
@@ -277,6 +278,7 @@ export function AuthConfig({ config, onChange }: AuthConfigProps) {
               type="url"
               value={config.cookie?.loginUrl ?? ''}
               onChange={(e) => patchCookie({ loginUrl: e.target.value })}
+              onBlur={() => patchCookie({ loginUrl: ensureProtocol(config.cookie?.loginUrl ?? '') })}
               placeholder="https://example.com/login"
               className={inputCls}
             />
@@ -352,6 +354,7 @@ export function AuthConfig({ config, onChange }: AuthConfigProps) {
                   type="url"
                   value={config.bearer?.tokenUrl ?? ''}
                   onChange={(e) => patchBearer({ tokenUrl: e.target.value })}
+                  onBlur={() => patchBearer({ tokenUrl: ensureProtocol(config.bearer?.tokenUrl ?? '') })}
                   placeholder="https://example.com/api/token"
                   className={inputCls}
                 />

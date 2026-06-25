@@ -81,23 +81,32 @@ export default function RunConfig({ onStart, onBack, disabled }: Props) {
         ))}
       </div>
 
+      <div className="bg-surface border border-border rounded-[8px] p-4 space-y-4">
+        <div>
+          <label className={labelCls}>Virtual Users</label>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={vus}
+            onChange={e => {
+              const v = Math.min(10, Math.max(1, parseInt(e.target.value) || 1));
+              setVus(v);
+              if (testType !== 'custom') {
+                setStages(TEST_PRESETS[testType].stages.map(s => ({
+                  ...s,
+                  target: s.target > 0 ? v : 0,
+                })));
+              }
+            }}
+            disabled={disabled}
+            className={`${inputCls} w-[120px]`}
+          />
+        </div>
+      </div>
+
       {testType === 'custom' && (
         <div className="bg-surface border border-border rounded-[8px] p-4 space-y-4">
-          <div>
-            <label className={labelCls}>Virtual Users</label>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={vus}
-              onChange={e => setVus(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
-              disabled={disabled}
-              className={`${inputCls} w-[120px]`}
-            />
-          </div>
-
-          <div className="h-px bg-border" />
-
           <div>
             <div className="flex items-center justify-between mb-3">
               <label className={`${labelCls} mb-0`}>Stages</label>

@@ -75,18 +75,14 @@ function setupBearerAuth() {
   };
 }
 
-// Per-VU state for cookie auth (login once per VU, reuse cookies)
-const vuState = {};
-
-async function ensureCookieAuth(page) {
-  if (vuState.authenticated) return;
-
+async function doCookieLogin(page) {
   const cfg = authConfig.cookie;
   console.log(`[VU ${__VU}] cookie auth: navigating to ${cfg.loginUrl}`);
   await page.goto(cfg.loginUrl, { waitUntil: 'networkidle', timeout: 120000 });
 
   for (let i = 0; i < cfg.steps.length; i++) {
     const step = cfg.steps[i];
+    if (!step.action) continue;
     console.log(`[VU ${__VU}] login step ${i + 1}/${cfg.steps.length}: ${step.action} on ${step.selector}`);
 
     if (step.action === 'fill') {
@@ -96,17 +92,14 @@ async function ensureCookieAuth(page) {
     }
 
     if (step.waitFor === 'networkidle') {
-      console.log(`[VU ${__VU}] waiting for networkidle...`);
       await page.waitForLoadState('networkidle');
     } else if (step.waitFor === 'navigation') {
-      console.log(`[VU ${__VU}] waiting for navigation...`);
       await page.waitForNavigation({ timeout: 120000 });
     }
   }
 
   await page.waitForLoadState('networkidle');
-  console.log(`[VU ${__VU}] cookie auth: login complete`);
-  vuState.authenticated = true;
+  console.log(`[VU ${__VU}] cookie auth: login complete (now at ${page.url()})`);
 }
 
 export default async function (data) {
@@ -126,7 +119,7 @@ export default async function (data) {
     }
 
     if (authConfig.type === 'cookie') {
-      await ensureCookieAuth(page);
+      await doCookieLogin(page);
     }
 
     console.log(`[VU ${__VU}][iter ${__ITER}] navigating to ${url}`);

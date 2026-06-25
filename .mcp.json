@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "load-test": {
+      "type": "stdio",
+      "command": "go",
+      "args": ["run", "./cmd/mcp"]
+    }
+  }
+}

@@ -38,6 +38,7 @@ if (auth && auth.type === 'cookie' && auth.cookie) {
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
     for (const step of auth.cookie.steps) {
+      if (!step.action) continue;
       const loc = page.locator(step.selector);
       await loc.waitFor({ state: 'visible', timeout: 10000 });
       if (step.action === 'fill') await loc.fill(step.value);

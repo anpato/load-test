@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { crawl, interactiveCrawl } from '../lib/api';
+import { ensureProtocol } from '../lib/url';
 
 interface CrawlFormProps {
   onResult: (urls: string[], isSPA: boolean, framework: string) => void;
@@ -47,6 +48,7 @@ export function CrawlForm({ onResult, authJson }: CrawlFormProps) {
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            onBlur={() => setUrl((v) => ensureProtocol(v))}
             placeholder="https://example.com"
             required
             className="w-full h-[38px] px-3 bg-s2 border border-border rounded-[4px] text-fg font-mono font-medium text-[13.5px] outline-none focus:border-accent focus:bg-surface"

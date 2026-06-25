@@ -6,6 +6,8 @@ import { AuthConfig } from './components/AuthConfig';
 import RunConfig from './components/RunConfig';
 import LiveDashboard from './components/LiveDashboard';
 import ResultsTable from './components/ResultsTable';
+import CompareRuns from './components/CompareRuns';
+import { SavedAuthPicker, HostSwap } from './components/EnvironmentPicker';
 import { useMetricsStream } from './hooks/useMetricsStream';
 import { createRun, getRun, stopRun, rerunTest, listRuns } from './lib/api';
 import type {
@@ -94,6 +96,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [pastRuns, setPastRuns] = useState<Run[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
 
   const { snapshots, history, logs, connected, disconnect } =
     useMetricsStream(runId);
@@ -106,7 +109,10 @@ export default function App() {
       setIsSPA(spa);
       setFramework(fw);
       if (urls.length > 0) {
-        setSelectedUrls(urls);
+        setSelectedUrls((prev) => {
+          const merged = new Set([...prev, ...urls]);
+          return [...merged];
+        });
         setStep('select');
       }
     },
@@ -114,7 +120,14 @@ export default function App() {
   );
 
   const handleManualRoutes = useCallback((urls: string[]) => {
-    setManualUrls(urls ?? []);
+    const newUrls = urls ?? [];
+    setManualUrls(newUrls);
+    if (newUrls.length > 0) {
+      setSelectedUrls((prev) => {
+        const merged = new Set([...prev, ...newUrls]);
+        return [...merged];
+      });
+    }
   }, []);
 
   const handleStartTest = useCallback(
@@ -192,6 +205,40 @@ export default function App() {
     [disconnect]
   );
 
+  const handleHostSwap = useCallback((newUrls: string[]) => {
+    setSelectedUrls(newUrls);
+    setManualUrls(newUrls);
+    setCrawledUrls([]);
+    if (newUrls.length > 0) {
+      try { setBaseUrl(new URL(newUrls[0]).origin); } catch {}
+    }
+  }, []);
+
+  const loadRunIntoWizard = useCallback((r: Run) => {
+    const urls = r.urls || [];
+    setCrawledUrls([]);
+    setManualUrls(urls);
+    setSelectedUrls(urls);
+    setRunId(null);
+    setRun(null);
+    setError(null);
+    setShowHistory(false);
+    setShowCompare(false);
+    if (r.config?.authJson) {
+      try {
+        setAuthConfig(JSON.parse(r.config.authJson));
+      } catch { /* keep current */ }
+    }
+    if (urls.length > 0) {
+      try {
+        const origin = new URL(urls[0]).origin;
+        setBaseUrl(origin);
+      } catch { /* keep current */ }
+    }
+    setMaxStepIndex(3);
+    setStep('config');
+  }, []);
+
   const loadHistory = useCallback(async () => {
     try {
       const runs = await listRuns();
@@ -229,6 +276,12 @@ export default function App() {
               aria-label="Toggle theme"
             >
               {isDark ? <SunIcon /> : <MoonIcon />}
+            </button>
+            <button
+              onClick={() => setShowCompare(true)}
+              className="h-[34px] px-3 flex items-center gap-2 rounded-[4px] border border-border bg-s2 text-fg text-[13px] hover:bg-border transition-colors"
+            >
+              Compare
             </button>
             <button
               onClick={loadHistory}
@@ -316,6 +369,9 @@ export default function App() {
       </div>
 
       <main className="max-w-[1120px] mx-auto px-7 py-6 space-y-6">
+        {showCompare ? (
+          <CompareRuns onClose={() => setShowCompare(false)} />
+        ) : <>
         {error && (
           <div className="p-3 bg-bad/10 border border-bad/20 text-bad rounded-[5px] text-[13px]">
             {error}
@@ -346,10 +402,11 @@ export default function App() {
                   </span>
                 )}
               </summary>
-              <div className="mt-4">
-                <p className="text-[12px] text-muted mb-3">
+              <div className="mt-4 space-y-3">
+                <p className="text-[12px] text-muted">
                   Set up authentication so the crawler can discover routes behind login.
                 </p>
+                <SavedAuthPicker currentAuth={authConfig} onSelect={setAuthConfig} />
                 <AuthConfig config={authConfig} onChange={setAuthConfig} />
               </div>
             </details>
@@ -416,6 +473,7 @@ export default function App() {
             <h2 className="text-[15px] font-semibold text-fg">
               Authentication
             </h2>
+            <SavedAuthPicker currentAuth={authConfig} onSelect={setAuthConfig} />
             <AuthConfig config={authConfig} onChange={setAuthConfig} />
             <div className="flex justify-between">
               <button
@@ -439,6 +497,7 @@ export default function App() {
             <h2 className="text-[15px] font-semibold text-fg">
               Configure Load Test
             </h2>
+            <HostSwap urls={selectedUrls} onSwap={handleHostSwap} />
             <div className="text-[13px] text-muted mb-1">
               Testing {selectedUrls.length} URL{selectedUrls.length !== 1 ? 's' : ''}
             </div>
@@ -489,9 +548,22 @@ export default function App() {
                 Re-run This Test
               </button>
               <button
+                onClick={() => loadRunIntoWizard(run)}
+                className="h-[38px] px-4 text-fg bg-s2 border border-border rounded-[5px] text-[13px] hover:bg-border transition-colors"
+              >
+                Edit & Re-run
+              </button>
+              <button
                 onClick={() => {
                   setRunId(null);
                   setRun(null);
+                  setCrawledUrls([]);
+                  setManualUrls([]);
+                  setSelectedUrls([]);
+                  setIsSPA(false);
+                  setFramework('');
+                  setError(null);
+                  setMaxStepIndex(0);
                   setStep('discover');
                 }}
                 className="h-[38px] px-4 text-fg bg-s2 border border-border rounded-[5px] text-[13px] hover:bg-border transition-colors"
@@ -501,6 +573,7 @@ export default function App() {
             </div>
           </div>
         )}
+        </>}
       </main>
 
       {showHistory && (
@@ -563,6 +636,12 @@ export default function App() {
                         className="h-[30px] px-3 text-[12px] text-fg bg-s2 border border-border rounded-[4px] hover:bg-border transition-colors"
                       >
                         View
+                      </button>
+                      <button
+                        onClick={() => loadRunIntoWizard(r)}
+                        className="h-[30px] px-3 text-[12px] text-fg bg-s2 border border-border rounded-[4px] hover:bg-border transition-colors"
+                      >
+                        Edit
                       </button>
                       <button
                         onClick={() => handleRerun(r.id)}
