@@ -85,6 +85,10 @@ function setupBearerAuth() {
   };
 }
 
+// Login runs per-iteration because k6 browser creates an isolated context per
+// browser.newPage() call — cookies from a previous page don't carry over.
+// Caching vuState.authenticated was incorrect: it skipped login but the new
+// page had no cookies, causing all target URLs to redirect to login.
 async function doCookieLogin(page) {
   const cfg = authConfig.cookie;
   console.log(`[VU ${__VU}] cookie auth: navigating to ${cfg.loginUrl}`);
