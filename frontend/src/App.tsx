@@ -369,7 +369,9 @@ export default function App() {
               <div className="flex justify-end">
                 <button
                   onClick={() => {
-                    setSelectedUrls(allUrls);
+                    if (selectedUrls.length === 0) {
+                      setSelectedUrls(allUrls);
+                    }
                     setStep('select');
                   }}
                   className="h-[38px] sm:h-[38px] h-[44px] px-4 bg-accent text-accent-fg rounded-[5px] text-[13px] font-medium hover:opacity-90 transition-opacity"
@@ -399,7 +401,7 @@ export default function App() {
                 Back
               </button>
               <button
-                onClick={() => setStep('auth')}
+                onClick={() => setStep(authConfig.type !== 'none' ? 'config' : 'auth')}
                 disabled={selectedUrls.length === 0}
                 className="h-[38px] px-4 bg-accent text-accent-fg rounded-[5px] text-[13px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
               >
@@ -437,15 +439,13 @@ export default function App() {
             <h2 className="text-[15px] font-semibold text-fg">
               Configure Load Test
             </h2>
-            <RunConfig onStart={handleStartTest} />
-            <div className="flex justify-start">
-              <button
-                onClick={() => setStep('auth')}
-                className="h-[38px] px-4 text-fg bg-s2 border border-border rounded-[5px] text-[13px] hover:bg-border transition-colors"
-              >
-                Back
-              </button>
+            <div className="text-[13px] text-muted mb-1">
+              Testing {selectedUrls.length} URL{selectedUrls.length !== 1 ? 's' : ''}
             </div>
+            <RunConfig
+              onStart={handleStartTest}
+              onBack={() => setStep(authConfig.type !== 'none' ? 'select' : 'auth')}
+            />
           </div>
         )}
 
