@@ -44,10 +44,12 @@ async function doLogin(p) {
     await p.goto(cfg.loginUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await p.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   } catch (err) {
-    process.stderr.write(`[discover] login page load: ${err.message}\n`);
+    process.stderr.write(`[discover] login page load failed: ${err.message}\n`);
+    process.stderr.write(`[discover] please log in manually, then navigate to your target site\n`);
     return;
   }
 
+  let autoLoginFailed = false;
   for (let i = 0; i < cfg.steps.length; i++) {
     const step = cfg.steps[i];
     process.stderr.write(`[discover] login step ${i + 1}/${cfg.steps.length}: ${step.action} "${step.selector}"\n`);
@@ -70,7 +72,23 @@ async function doLogin(p) {
       }
     } catch (err) {
       process.stderr.write(`[discover]   FAILED: ${err.message}\n`);
-      process.stderr.write(`[discover]   selector "${step.selector}" may be dynamic — try re-recording the login flow\n`);
+      autoLoginFailed = true;
+      break;
+    }
+  }
+
+  if (autoLoginFailed) {
+    process.stderr.write(`[discover] auto-login failed — please complete login manually in the browser\n`);
+    process.stderr.write(`[discover] waiting for navigation away from login page...\n`);
+    const loginUrl = p.url();
+    try {
+      await p.waitForFunction(
+        (startUrl) => window.location.href !== startUrl,
+        loginUrl,
+        { timeout: 300000 }
+      );
+    } catch {
+      process.stderr.write(`[discover] timed out waiting for manual login\n`);
     }
   }
 
