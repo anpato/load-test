@@ -145,7 +145,7 @@ export default async function (data) {
       const loginPath = loginUrl.replace(/^https?:\/\/[^/]+/, '');
       const currentUrl = page.url();
       const currentPath = currentUrl.replace(/^https?:\/\/[^/]+/, '');
-      if (currentPath === loginPath && url !== loginUrl) {
+      if (currentPath.split('?')[0] === loginPath.split('?')[0] && url !== loginUrl) {
         throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
       }
     }
