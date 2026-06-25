@@ -35,6 +35,12 @@ export const options = {
       },
     },
   },
+  thresholds: {
+    'custom_lcp': ['p(75)<4000'],
+    'custom_fcp': ['p(75)<3000'],
+    'custom_ttfb': ['p(75)<1800'],
+    'page_success_rate': ['rate>0.9'],
+  },
 };
 
 export function setup() {
@@ -65,6 +71,10 @@ function setupBearerAuth() {
     const res = http.post(cfg.tokenUrl, JSON.stringify(cfg.credentials || {}), {
       headers: { 'Content-Type': 'application/json' },
     });
+    check(res, { 'token endpoint status 2xx': (r) => r.status >= 200 && r.status < 300 });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`Bearer token request failed with status ${res.status}`);
+    }
     const data = res.json();
     const field = cfg.tokenField || 'token';
     token = field.split('.').reduce((obj, key) => obj && obj[key], data) || '';
