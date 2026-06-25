@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/anpato/load-test/internal/api"
 	"github.com/anpato/load-test/internal/k6"
@@ -16,6 +18,7 @@ import (
 func main() {
 	port := flag.Int("port", 8080, "server port")
 	scriptPath := flag.String("script", "scripts/web-vitals.js", "path to k6 script")
+	open := flag.Bool("open", false, "open browser on startup")
 	flag.Parse()
 
 	absScript, err := filepath.Abs(*scriptPath)
@@ -42,7 +45,29 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("starting server on %s", addr)
+
+	if *open {
+		url := fmt.Sprintf("http://localhost:%d", *port)
+		go openBrowser(url)
+	}
+
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server error: %v", err)
+	}
+}
+
+func openBrowser(url string) {
+	var cmd string
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = "open"
+	case "linux":
+		cmd = "xdg-open"
+	case "windows":
+		cmd = "rundll32"
+		url = "url.dll,FileProtocolHandler " + url
+	}
+	if err := exec.Command(cmd, url).Start(); err != nil {
+		log.Printf("failed to open browser: %v", err)
 	}
 }
