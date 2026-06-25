@@ -141,9 +141,10 @@ export default async function (data) {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 120000 });
 
     if (authConfig.type === 'cookie' && authConfig.cookie?.loginUrl) {
-      const currentUrl = page.url();
-      if (currentUrl.includes(new URL(authConfig.cookie.loginUrl).pathname)) {
-        throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
+      const loginPath = new URL(authConfig.cookie.loginUrl).pathname;
+      const currentPath = new URL(page.url()).pathname;
+      if (currentPath === loginPath && url !== authConfig.cookie.loginUrl) {
+        throw new Error(`Redirected to login — auth may have failed (landed on ${page.url()})`);
       }
     }
 
@@ -208,6 +209,10 @@ export default async function (data) {
         }, 3000);
       });
     });
+
+    if (vitals.lcp === 0 && vitals.fcp === 0 && vitals.ttfb === 0) {
+      throw new Error('No performance entries collected — page may not have loaded');
+    }
 
     console.log(`[VU ${__VU}][iter ${__ITER}] vitals: LCP=${vitals.lcp.toFixed(0)}ms FCP=${vitals.fcp.toFixed(0)}ms CLS=${vitals.cls.toFixed(3)} TTFB=${vitals.ttfb.toFixed(0)}ms`);
 
