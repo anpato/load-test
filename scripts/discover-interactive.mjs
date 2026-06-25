@@ -80,15 +80,15 @@ async function doLogin(p) {
   if (autoLoginFailed) {
     process.stderr.write(`[discover] auto-login failed — please complete login manually in the browser\n`);
     process.stderr.write(`[discover] waiting for navigation away from login page...\n`);
-    const loginUrl = p.url();
     try {
+      const loginUrl = p.url();
       await p.waitForFunction(
         (startUrl) => window.location.href !== startUrl,
         loginUrl,
         { timeout: 300000 }
       );
     } catch {
-      process.stderr.write(`[discover] timed out waiting for manual login\n`);
+      process.stderr.write(`[discover] manual login wait ended\n`);
     }
   }
 
@@ -104,53 +104,80 @@ let activePage = context.pages()[0] || await context.newPage();
 
 if (auth && auth.type === 'cookie' && auth.cookie) {
   await doLogin(activePage);
-  // After login, the page may have been replaced by a redirect.
-  // Get whatever page is currently open.
+  // After login, the page may have been replaced or crashed.
+  // Verify the page is still usable; if not, open a fresh one.
   const pages = context.pages();
-  activePage = pages[pages.length - 1] || activePage;
+  const livePage = pages[pages.length - 1];
+  try {
+    if (livePage) await livePage.url();
+    activePage = livePage || activePage;
+  } catch {
+    process.stderr.write('[discover] page died during login, opening fresh page\n');
+    activePage = await context.newPage();
+  }
 } else if (auth && auth.type === 'bearer' && auth.bearer?.token) {
   await context.setExtraHTTPHeaders({ Authorization: `Bearer ${auth.bearer.token}` });
 } else if (auth && auth.type === 'headers' && auth.headers) {
   await context.setExtraHTTPHeaders(auth.headers);
 }
 
-// Set up history interception on the active page
-try {
-  await activePage.addInitScript(`(${function () {
-    const _pushState = history.pushState.bind(history);
-    const _replaceState = history.replaceState.bind(history);
+async function initPage(p) {
+  try {
+    await p.addInitScript(`(${function () {
+      const _pushState = history.pushState.bind(history);
+      const _replaceState = history.replaceState.bind(history);
 
-    history.pushState = function (...args) {
-      _pushState(...args);
-      if (window.__reportNav) window.__reportNav(location.href);
-    };
-    history.replaceState = function (...args) {
-      _replaceState(...args);
-      if (window.__reportNav) window.__reportNav(location.href);
-    };
+      history.pushState = function (...args) {
+        _pushState(...args);
+        if (window.__reportNav) window.__reportNav(location.href);
+      };
+      history.replaceState = function (...args) {
+        _replaceState(...args);
+        if (window.__reportNav) window.__reportNav(location.href);
+      };
 
-    window.addEventListener('popstate', () => {
-      if (window.__reportNav) window.__reportNav(location.href);
+      window.addEventListener('popstate', () => {
+        if (window.__reportNav) window.__reportNav(location.href);
+      });
+    }.toString()})()`);
+
+    await p.exposeFunction('__reportNav', (url) => {
+      trackUrl(url);
     });
-  }.toString()})()`);
-
-  await activePage.exposeFunction('__reportNav', (url) => {
-    trackUrl(url);
-  });
-} catch (err) {
-  process.stderr.write(`[discover] init script setup: ${err.message}\n`);
+  } catch (err) {
+    process.stderr.write(`[discover] init script setup: ${err.message}\n`);
+  }
+  setupPageTracking(p);
 }
 
-setupPageTracking(activePage);
+async function ensureLivePage() {
+  const pages = context.pages();
+  for (const p of pages.reverse()) {
+    try {
+      p.url();
+      return p;
+    } catch {}
+  }
+  return await context.newPage();
+}
+
+await initPage(activePage);
 
 process.stderr.write(`[discover] opening ${baseUrl} — click around to discover routes, then close the browser\n`);
 
 try {
   await activePage.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
 } catch (err) {
-  process.stderr.write(`[discover] initial navigation: ${err.message}\n`);
+  process.stderr.write(`[discover] navigation failed, recovering: ${err.message}\n`);
+  activePage = await ensureLivePage();
+  await initPage(activePage);
+  try {
+    await activePage.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  } catch (retryErr) {
+    process.stderr.write(`[discover] retry also failed: ${retryErr.message}\n`);
+  }
 }
-trackUrl(activePage.url());
+try { trackUrl(activePage.url()); } catch {}
 
 // Wait for user to close the browser
 await new Promise((resolve) => {
