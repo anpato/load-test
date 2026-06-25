@@ -108,10 +108,12 @@ func startRunHandler(s *store.Store, runner *k6.Runner) func(context.Context, mc
 		if testType == "" {
 			testType = "smoke"
 		}
-		stages, ok := presetStages[testType]
+		preset, ok := presetStages[testType]
 		if !ok {
 			return mcp.NewToolResultError(fmt.Sprintf("unknown test_type: %s (use smoke, load, stress, soak)", testType)), nil
 		}
+		stages := make([]k6.Stage, len(preset))
+		copy(stages, preset)
 
 		vus := args.VUs
 		if vus <= 0 {
