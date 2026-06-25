@@ -87,7 +87,7 @@ export default function CompareRuns({ onClose, initialRunA, initialRunB }: Compa
   useEffect(() => {
     listRuns()
       .then((r) => {
-        const finished = (r || []).filter((run) => run.status === 'finished' && run.results && Object.keys(run.results).length > 0);
+        const finished = (r || []).filter((run) => (run.status === 'finished' || run.status === 'error') && run.results && Object.keys(run.results).length > 0);
         setRuns(finished);
       })
       .finally(() => setLoading(false));
