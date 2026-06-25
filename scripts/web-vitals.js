@@ -39,6 +39,7 @@ export const options = {
     'custom_lcp': ['p(75)<4000'],
     'custom_fcp': ['p(75)<3000'],
     'custom_ttfb': ['p(75)<1800'],
+    'custom_cls': ['p(75)<0.25'],
     'page_success_rate': ['rate>0.9'],
   },
 };
@@ -138,6 +139,13 @@ export default async function (data) {
 
     console.log(`[VU ${__VU}][iter ${__ITER}] navigating to ${url}`);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 120000 });
+
+    if (authConfig.type === 'cookie' && authConfig.cookie?.loginUrl) {
+      const currentUrl = page.url();
+      if (currentUrl.includes(new URL(authConfig.cookie.loginUrl).pathname)) {
+        throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
+      }
+    }
 
     const vitals = await page.evaluate(() => {
       return new Promise((resolve) => {
