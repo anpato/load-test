@@ -1,10 +1,8 @@
 package main
 
 import (
-	"embed"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -14,9 +12,6 @@ import (
 	"github.com/anpato/load-test/internal/k6"
 	"github.com/anpato/load-test/internal/store"
 )
-
-//go:embed all:dist
-var frontendFS embed.FS
 
 func main() {
 	port := flag.Int("port", 8080, "server port")
@@ -42,13 +37,8 @@ func main() {
 	}
 	defer s.Close()
 
-	distFS, err := fs.Sub(frontendFS, "dist")
-	if err != nil {
-		log.Fatalf("cannot access embedded frontend: %v", err)
-	}
-
 	server := api.NewServer(s, runner)
-	handler := api.SetupRoutes(server, distFS)
+	handler := api.SetupRoutes(server, frontendFS())
 
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("starting server on %s", addr)

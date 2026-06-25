@@ -114,7 +114,7 @@ build-frontend:
 	cd frontend && npm run build
 
 build-backend: embed-frontend
-	go build -o bin/load-test ./cmd/server
+	go build -tags embed_frontend -o bin/load-test ./cmd/server
 	rm -rf cmd/server/dist
 
 embed-frontend:

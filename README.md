@@ -2,6 +2,34 @@
 
 A load testing tool for measuring Core Web Vitals (LCP, FCP, CLS, TTFB) across your web application. Built with a Go backend, React frontend, and k6 browser module for real browser-based measurements.
 
+## Screenshots
+
+<table>
+<tr>
+<td><strong>Discover Routes</strong></td>
+<td><strong>Select Routes</strong></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/light-01-discover.png" alt="Discover routes" width="400" /></td>
+<td><img src="docs/screenshots/light-03-select-routes.png" alt="Select routes" width="400" /></td>
+</tr>
+<tr>
+<td><strong>Configure Test</strong></td>
+<td><strong>Run History</strong></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/light-05-configure.png" alt="Configure test" width="400" /></td>
+<td><img src="docs/screenshots/light-06-history.png" alt="Run history" width="400" /></td>
+</tr>
+<tr>
+<td colspan="2"><strong>Dark Mode</strong></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/dark-01-discover.png" alt="Dark mode - discover" width="400" /></td>
+<td><img src="docs/screenshots/dark-05-configure.png" alt="Dark mode - configure" width="400" /></td>
+</tr>
+</table>
+
 ## How It Works
 
 1. **Discover routes** -- crawl a site automatically (with auth support), browse interactively, or enter routes manually
