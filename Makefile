@@ -37,14 +37,27 @@ setup: check
 	@cd frontend && npm run build 2>/dev/null
 	@echo "  ✓ Frontend build OK"
 	@echo ""
+	@echo "  → Local domain"
+	@if grep -q 'load-test.local' /etc/hosts 2>/dev/null; then \
+		echo "  ✓ load-test.local already in /etc/hosts"; \
+	else \
+		echo "  ! load-test.local not in /etc/hosts"; \
+		echo "    Run: sudo make setup-hosts"; \
+	fi
+	@echo ""
 	@echo "  ✅ Setup complete!"
 	@echo ""
 	@echo "  make dev     Start dev servers (backend + frontend)"
 	@echo "  make build   Production build"
 	@echo "  make test    Run e2e tests"
 	@echo ""
-	@echo "  Dev UI:      http://localhost:5173"
-	@echo "  API:         http://localhost:8080"
+	@if grep -q 'load-test.local' /etc/hosts 2>/dev/null; then \
+		echo "  Dev UI:      http://load-test.local:5173"; \
+		echo "  Production:  http://load-test.local:8080"; \
+	else \
+		echo "  Dev UI:      http://localhost:5173"; \
+		echo "  Production:  http://localhost:8080"; \
+	fi
 	@echo ""
 
 check:
@@ -78,6 +91,18 @@ dev-backend:
 
 dev-frontend:
 	cd frontend && npm run dev
+
+# ──────────────────────────────────────────────
+# Local domain
+# ──────────────────────────────────────────────
+
+setup-hosts:
+	@if grep -q 'load-test.local' /etc/hosts; then \
+		echo "load-test.local already configured"; \
+	else \
+		echo "127.0.0.1 load-test.local" | sudo tee -a /etc/hosts > /dev/null; \
+		echo "✓ Added load-test.local to /etc/hosts"; \
+	fi
 
 # ──────────────────────────────────────────────
 # Build

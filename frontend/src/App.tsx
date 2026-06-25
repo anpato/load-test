@@ -58,18 +58,21 @@ function SunIcon() {
 export default function App() {
   const [step, setStepRaw] = useState<Step>('discover');
   const [maxStepIndex, setMaxStepIndex] = useState(0);
-  const [isDark, setIsDark] = useState(() =>
-    document.documentElement.classList.contains('dark')
-  );
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      const dark = saved === 'dark';
+      document.documentElement.classList.toggle('dark', dark);
+      return dark;
+    }
+    return document.documentElement.classList.contains('dark');
+  });
 
   const toggleTheme = () => {
     const next = !isDark;
     setIsDark(next);
-    if (next) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('theme', next ? 'dark' : 'light');
   };
 
   const setStep = (s: Step) => {

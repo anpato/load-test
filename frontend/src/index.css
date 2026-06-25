@@ -62,8 +62,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-input, button, textarea, select {
+input, textarea, select {
   font-family: inherit;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
 }
 
 input::placeholder, textarea::placeholder {
