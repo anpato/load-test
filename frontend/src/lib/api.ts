@@ -79,11 +79,13 @@ export function expandRoutes(
 
 export function createRun(
   urls: string[],
-  config: RunConfig
+  config: RunConfig,
+  name?: string,
+  tags?: string[],
 ): Promise<{ runId: string }> {
   return request('/runs', {
     method: 'POST',
-    body: JSON.stringify({ urls, config }),
+    body: JSON.stringify({ urls, config, name, tags }),
   });
 }
 
@@ -99,8 +101,18 @@ export function listRuns(): Promise<Run[]> {
   return request('/runs');
 }
 
-export function rerunTest(id: string): Promise<{ runId: string }> {
-  return request(`/runs/${id}/rerun`, { method: 'POST' });
+export function deleteRun(id: string): Promise<{ status: string }> {
+  return request(`/runs/${id}/delete`, { method: 'DELETE' });
+}
+
+export function rerunTest(
+  id: string,
+  options?: { authJson?: string },
+): Promise<{ runId: string }> {
+  return request(`/runs/${id}/rerun`, {
+    method: 'POST',
+    body: options ? JSON.stringify(options) : undefined,
+  });
 }
 
 export async function recordLogin(

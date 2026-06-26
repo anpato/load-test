@@ -17,6 +17,7 @@ const (
 	StatusPending  RunStatus = "pending"
 	StatusRunning  RunStatus = "running"
 	StatusFinished RunStatus = "finished"
+	StatusBreached RunStatus = "breached"
 	StatusError    RunStatus = "error"
 )
 
@@ -30,19 +31,23 @@ type VitalMetrics struct {
 }
 
 type URLResult struct {
-	URL  string       `json:"url"`
-	LCP  VitalMetrics `json:"lcp"`
-	FCP  VitalMetrics `json:"fcp"`
-	CLS  VitalMetrics `json:"cls"`
-	TTFB VitalMetrics `json:"ttfb"`
+	URL    string       `json:"url"`
+	LCP    VitalMetrics `json:"lcp"`
+	FCP    VitalMetrics `json:"fcp"`
+	CLS    VitalMetrics `json:"cls"`
+	TTFB   VitalMetrics `json:"ttfb"`
+	Errors int          `json:"errors"`
 }
 
 type Run struct {
 	ID        string               `json:"id"`
 	Status    RunStatus            `json:"status"`
+	Name      string               `json:"name,omitempty"`
+	Tags      []string             `json:"tags,omitempty"`
 	URLs      []string             `json:"urls"`
 	Config    RunConfig            `json:"config"`
 	Results   map[string]URLResult `json:"results"`
+	Logs      []string             `json:"logs,omitempty"`
 	Error     string               `json:"error,omitempty"`
 	StartedAt time.Time            `json:"startedAt"`
 	EndedAt   *time.Time           `json:"endedAt,omitempty"`
@@ -94,10 +99,24 @@ func migrate(db *sql.DB) error {
 			results    TEXT,
 			error      TEXT,
 			started_at TEXT NOT NULL,
-			ended_at   TEXT
+			ended_at   TEXT,
+			name       TEXT NOT NULL DEFAULT '',
+			tags       TEXT NOT NULL DEFAULT '[]',
+			logs       TEXT NOT NULL DEFAULT '[]'
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	for _, col := range []struct{ name, def string }{
+		{"name", "TEXT NOT NULL DEFAULT ''"},
+		{"tags", "TEXT NOT NULL DEFAULT '[]'"},
+		{"logs", "TEXT NOT NULL DEFAULT '[]'"},
+	} {
+		db.Exec("ALTER TABLE runs ADD COLUMN " + col.name + " " + col.def)
+	}
+	return nil
 }
 
 func (s *Store) Close() error {
@@ -122,7 +141,7 @@ func (s *Store) Delete(id string) {
 }
 
 func (s *Store) List() []*Run {
-	rows, err := s.db.Query("SELECT id, status, urls, config, results, error, started_at, ended_at FROM runs ORDER BY started_at DESC")
+	rows, err := s.db.Query("SELECT id, status, urls, config, results, error, started_at, ended_at, name, tags, logs FROM runs ORDER BY started_at DESC")
 	if err != nil {
 		log.Printf("[store] list query error: %v", err)
 		return nil
@@ -162,6 +181,8 @@ func (s *Store) persist(run *Run) {
 
 	urlsJSON, _ := json.Marshal(run.URLs)
 	configJSON, _ := json.Marshal(run.Config)
+	tagsJSON, _ := json.Marshal(run.Tags)
+	logsJSON, _ := json.Marshal(run.Logs)
 	var resultsJSON []byte
 	if run.Results != nil {
 		resultsJSON, _ = json.Marshal(run.Results)
@@ -174,15 +195,17 @@ func (s *Store) persist(run *Run) {
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO runs (id, status, urls, config, results, error, started_at, ended_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO runs (id, status, urls, config, results, error, started_at, ended_at, name, tags, logs)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			status = excluded.status,
 			results = excluded.results,
 			error = excluded.error,
-			ended_at = excluded.ended_at
+			ended_at = excluded.ended_at,
+			logs = excluded.logs
 	`, run.ID, string(run.Status), string(urlsJSON), string(configJSON),
-		nullableString(resultsJSON), run.Error, run.StartedAt.Format(time.RFC3339), endedAt)
+		nullableString(resultsJSON), run.Error, run.StartedAt.Format(time.RFC3339), endedAt,
+		run.Name, string(tagsJSON), string(logsJSON))
 
 	if err != nil {
 		log.Printf("[store] persist error for run %s: %v", run.ID, err)
@@ -190,7 +213,7 @@ func (s *Store) persist(run *Run) {
 }
 
 func (s *Store) loadFromDB(id string) (*Run, bool) {
-	row := s.db.QueryRow("SELECT id, status, urls, config, results, error, started_at, ended_at FROM runs WHERE id = ?", id)
+	row := s.db.QueryRow("SELECT id, status, urls, config, results, error, started_at, ended_at, name, tags, logs FROM runs WHERE id = ?", id)
 	run, err := scanRunRow(row)
 	if err != nil {
 		return nil, false
@@ -212,19 +235,25 @@ func scanRunRow(s scannable) (*Run, error) {
 		resultsStr, errStr             sql.NullString
 		startedAtStr                   string
 		endedAtStr                     sql.NullString
+		name                           string
+		tagsStr                        string
+		logsStr                        string
 	)
 
-	if err := s.Scan(&id, &status, &urlsStr, &configStr, &resultsStr, &errStr, &startedAtStr, &endedAtStr); err != nil {
+	if err := s.Scan(&id, &status, &urlsStr, &configStr, &resultsStr, &errStr, &startedAtStr, &endedAtStr, &name, &tagsStr, &logsStr); err != nil {
 		return nil, err
 	}
 
 	run := &Run{
 		ID:     id,
 		Status: RunStatus(status),
+		Name:   name,
 	}
 
 	json.Unmarshal([]byte(urlsStr), &run.URLs)
 	json.Unmarshal([]byte(configStr), &run.Config)
+	json.Unmarshal([]byte(tagsStr), &run.Tags)
+	json.Unmarshal([]byte(logsStr), &run.Logs)
 
 	if resultsStr.Valid && resultsStr.String != "" {
 		run.Results = make(map[string]URLResult)
@@ -256,7 +285,7 @@ func (r *Run) SetStatus(status RunStatus) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Status = status
-	if status == StatusFinished || status == StatusError {
+	if status == StatusFinished || status == StatusError || status == StatusBreached {
 		now := time.Now()
 		r.EndedAt = &now
 	}
@@ -278,6 +307,12 @@ func (r *Run) UpdateResult(urlResult URLResult) {
 		r.Results = make(map[string]URLResult)
 	}
 	r.Results[urlResult.URL] = urlResult
+}
+
+func (r *Run) AppendLog(line string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Logs = append(r.Logs, line)
 }
 
 func (r *Run) GetResults() map[string]URLResult {

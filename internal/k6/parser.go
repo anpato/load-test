@@ -22,12 +22,15 @@ type PointData struct {
 
 // StreamOutput tails a file that k6 is writing NDJSON to.
 // It polls for new data since the file grows incrementally.
+// When ctx is cancelled, it does a final drain of any remaining
+// lines before returning.
 func StreamOutput(ctx context.Context, reader io.Reader, ch chan<- K6Output) error {
 	r := bufio.NewReader(reader)
 
 	for {
 		select {
 		case <-ctx.Done():
+			drain(r, ch)
 			return ctx.Err()
 		default:
 		}
@@ -37,6 +40,7 @@ func StreamOutput(ctx context.Context, reader io.Reader, ch chan<- K6Output) err
 			if err == io.EOF {
 				select {
 				case <-ctx.Done():
+					drain(r, ch)
 					return ctx.Err()
 				case <-time.After(200 * time.Millisecond):
 					continue
@@ -45,23 +49,29 @@ func StreamOutput(ctx context.Context, reader io.Reader, ch chan<- K6Output) err
 			return err
 		}
 
-		if len(line) == 0 {
-			continue
-		}
+		parseLine(line, ch)
+	}
+}
 
-		var out K6Output
-		if err := json.Unmarshal(line, &out); err != nil {
-			continue
+func drain(r *bufio.Reader, ch chan<- K6Output) {
+	for {
+		line, err := r.ReadBytes('\n')
+		if len(line) > 0 {
+			parseLine(line, ch)
 		}
-
-		if out.Type != "Point" {
-			continue
-		}
-
-		select {
-		case ch <- out:
-		case <-ctx.Done():
-			return ctx.Err()
+		if err != nil {
+			return
 		}
 	}
+}
+
+func parseLine(line []byte, ch chan<- K6Output) {
+	if len(line) == 0 {
+		return
+	}
+	var out K6Output
+	if json.Unmarshal(line, &out) != nil || out.Type != "Point" {
+		return
+	}
+	ch <- out
 }

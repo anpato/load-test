@@ -17,13 +17,13 @@
   --color-accent-soft: #eaf7ee;
   --color-warn: #b86e00;
   --color-bad: #e5484d;
-  --color-terminal-bg: #0b0f16;
-  --color-terminal-border: #1c2533;
-  --color-terminal-header: #10151e;
-  --color-terminal-text: #9fb3c8;
-  --color-terminal-dim: #5b6b80;
-  --color-terminal-muted: #3f4d61;
-  --color-terminal-input: #cdd7e3;
+  --color-terminal-bg: #0a0a0a;
+  --color-terminal-border: #242424;
+  --color-terminal-header: #111111;
+  --color-terminal-text: #a0a0a0;
+  --color-terminal-dim: #5a5a5a;
+  --color-terminal-muted: #3a3a3a;
+  --color-terminal-input: #d0d0d0;
   --color-terminal-accent: #3ee07a;
 }
 

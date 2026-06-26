@@ -17,6 +17,7 @@ func SetupRoutes(server *Server, frontendFS fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/runs", server.HandleListRuns)
 	mux.HandleFunc("GET /api/runs/{id}", server.HandleGetRun)
 	mux.HandleFunc("DELETE /api/runs/{id}", server.HandleStopRun)
+	mux.HandleFunc("DELETE /api/runs/{id}/delete", server.HandleDeleteRun)
 	mux.HandleFunc("POST /api/runs/{id}/rerun", server.HandleRerun)
 	mux.HandleFunc("POST /api/crawl/interactive", server.HandleInteractiveCrawl)
 	mux.HandleFunc("GET /api/sessions/{id}", server.HandleSessionStatus)

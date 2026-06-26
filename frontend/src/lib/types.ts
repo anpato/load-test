@@ -82,14 +82,18 @@ export interface URLResult {
   fcp: VitalMetrics;
   cls: VitalMetrics;
   ttfb: VitalMetrics;
+  errors: number;
 }
 
 export interface Run {
   id: string;
-  status: 'pending' | 'running' | 'finished' | 'error';
+  status: 'pending' | 'running' | 'finished' | 'breached' | 'error';
+  name?: string;
+  tags?: string[];
   urls: string[];
   config: RunConfig;
   results: Record<string, URLResult>;
+  logs?: string[];
   error?: string;
   startedAt: string;
   endedAt?: string;

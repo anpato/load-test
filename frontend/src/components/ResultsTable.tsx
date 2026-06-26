@@ -15,6 +15,20 @@ interface Props {
 
 const VITALS: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function lastSegment(url: string): string {
+  try {
+    const segs = new URL(url).pathname.split('/').filter(Boolean);
+    if (segs.length === 0) return '/';
+    const last = segs[segs.length - 1];
+    if (UUID_RE.test(last)) return last.slice(0, 8) + '/';
+    return last;
+  } catch {
+    return url;
+  }
+}
+
 function avg(vals: number[]): number {
   if (vals.length === 0) return 0;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -213,13 +227,25 @@ export default function ResultsTable({ results }: Props) {
           </thead>
           <tbody>
             {sorted.map((row, i) => (
-              <tr key={row.url} className={`border-b border-border last:border-b-0 ${i % 2 !== 0 ? 'bg-s2/40' : ''}`}>
+              <tr key={row.url} className={`border-b border-border last:border-b-0 ${i % 2 !== 0 ? 'bg-s2/40' : ''} ${!row.lcp.samples?.length ? 'opacity-60' : ''}`}>
                 <td
                   style={{ width: widths[0] }}
                   className="px-3 py-2.5 font-mono text-[13px] text-fg truncate max-w-0"
                   title={row.url}
                 >
-                  {row.url}
+                  <span className="flex items-center gap-1.5">
+                    {lastSegment(row.url)}
+                    {row.errors > 0 && (
+                      <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-medium bg-bad/10 text-bad rounded" title={`${row.errors} error(s)`}>
+                        {row.errors} err
+                      </span>
+                    )}
+                    {!row.lcp.samples?.length && row.errors === 0 && (
+                      <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-medium bg-s2 text-subtle rounded border border-border">
+                        not tested
+                      </span>
+                    )}
+                  </span>
                 </td>
                 {VITALS.map((v, vi) => {
                   const val = row[v].p75;

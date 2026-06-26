@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,8 +15,11 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 )
+
+type ThresholdBreachedError struct{}
+
+func (e *ThresholdBreachedError) Error() string { return "thresholds breached" }
 
 type Stage struct {
 	Duration string `json:"duration"`
@@ -162,16 +166,20 @@ func (r *Runner) Start(ctx context.Context, cfg RunConfig) *RunOutput {
 
 		cmdErr := cmd.Wait()
 
-		// k6 has exited — give the tailer time to drain remaining data
-		time.Sleep(500 * time.Millisecond)
 		tailCancel()
 		<-tailDone
 
 		log.Printf("[k6] run %s: file tailer drained", cfg.RunID)
 
 		if cmdErr != nil && runCtx.Err() == nil {
-			log.Printf("[k6] run %s: k6 exited with error: %v", cfg.RunID, cmdErr)
-			errCh <- fmt.Errorf("k6 exited: %w", cmdErr)
+			var exitErr *exec.ExitError
+			if errors.As(cmdErr, &exitErr) && exitErr.ExitCode() == 99 {
+				log.Printf("[k6] run %s: thresholds breached (exit 99)", cfg.RunID)
+				errCh <- &ThresholdBreachedError{}
+			} else {
+				log.Printf("[k6] run %s: k6 exited with error: %v", cfg.RunID, cmdErr)
+				errCh <- fmt.Errorf("k6 exited: %w", cmdErr)
+			}
 		} else {
 			log.Printf("[k6] run %s: k6 finished successfully", cfg.RunID)
 		}

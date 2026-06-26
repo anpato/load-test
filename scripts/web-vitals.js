@@ -18,6 +18,12 @@ const urls = new SharedArray('target_urls', function () {
 const authConfig = JSON.parse(__ENV.AUTH_JSON || '{"type":"none"}');
 const thinkTime = parseInt(__ENV.THINK_TIME || '2');
 
+const stages = JSON.parse(
+  __ENV.STAGES_JSON ||
+    '[{"duration":"30s","target":1},{"duration":"1m","target":1},{"duration":"15s","target":0}]'
+);
+const maxVUs = Math.max(1, ...stages.map((s) => s.target));
+
 export const options = {
   scenarios: {
     web_vitals: {
@@ -93,7 +99,7 @@ function setupBearerAuth() {
 async function doCookieLogin(page) {
   const cfg = authConfig.cookie;
   console.log(`[VU ${__VU}] cookie auth: navigating to ${cfg.loginUrl}`);
-  await page.goto(cfg.loginUrl, { waitUntil: 'networkidle', timeout: 120000 });
+  await page.goto(cfg.loginUrl, { waitUntil: 'load', timeout: 60000 });
 
   for (let i = 0; i < cfg.steps.length; i++) {
     const step = cfg.steps[i];
@@ -107,9 +113,9 @@ async function doCookieLogin(page) {
     }
 
     if (step.waitFor === 'networkidle') {
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('load');
     } else if (step.waitFor === 'navigation') {
-      await page.waitForNavigation({ timeout: 120000 });
+      await page.waitForNavigation({ timeout: 60000 });
     }
   }
 
@@ -123,113 +129,124 @@ export default async function (data) {
     return;
   }
 
-  const url = urls[(__ITER + __VU) % urls.length];
-  console.log(`[VU ${__VU}][iter ${__ITER}] testing ${url}`);
+  // Stride by maxVUs so each VU tests different URLs with no overlap.
+  // VU 1 → URLs 0,5,10,15  VU 2 → URLs 1,6,11,16  etc. (with 5 VUs, 20 URLs)
+  const urlIndex = ((__VU - 1) + __ITER * maxVUs) % urls.length;
+  const url = urls[urlIndex];
+  console.log(`[VU ${__VU}][iter ${__ITER}] testing ${url} (${urlIndex + 1}/${urls.length})`);
 
-  const page = await browser.newPage();
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const page = await browser.newPage();
 
-  try {
-    if (data.headers && Object.keys(data.headers).length > 0) {
-      await page.setExtraHTTPHeaders(data.headers);
-    }
-
-    if (authConfig.type === 'cookie') {
-      await doCookieLogin(page);
-    }
-
-    console.log(`[VU ${__VU}][iter ${__ITER}] navigating to ${url}`);
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 120000 });
-
-    if (authConfig.type === 'cookie' && authConfig.cookie?.loginUrl) {
-      const loginUrl = authConfig.cookie.loginUrl;
-      const loginPath = loginUrl.replace(/^https?:\/\/[^/]+/, '');
-      const currentUrl = page.url();
-      const currentPath = currentUrl.replace(/^https?:\/\/[^/]+/, '');
-      if (currentPath.split('?')[0] === loginPath.split('?')[0] && url !== loginUrl) {
-        throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
+    try {
+      if (data.headers && Object.keys(data.headers).length > 0) {
+        await page.setExtraHTTPHeaders(data.headers);
       }
-    }
 
-    const vitals = await page.evaluate(() => {
-      return new Promise((resolve) => {
-        const result = { lcp: 0, fcp: 0, cls: 0, ttfb: 0 };
+      if (authConfig.type === 'cookie') {
+        await doCookieLogin(page);
+      }
 
-        const navEntry = performance.getEntriesByType('navigation')[0];
-        if (navEntry) result.ttfb = navEntry.responseStart;
+      console.log(`[VU ${__VU}][iter ${__ITER}] navigating to ${url}`);
+      await page.goto(url, { waitUntil: 'load', timeout: 60000 });
 
-        const fcpEntry = performance.getEntriesByName(
-          'first-contentful-paint'
-        )[0];
-        if (fcpEntry) result.fcp = fcpEntry.startTime;
-
-        let lastLCP = 0;
-        try {
-          const lcpObs = new PerformanceObserver((list) => {
-            const entries = list.getEntries();
-            if (entries.length > 0)
-              lastLCP = entries[entries.length - 1].startTime;
-          });
-          lcpObs.observe({ type: 'largest-contentful-paint', buffered: true });
-        } catch (e) {
-          /* not supported */
+      if (authConfig.type === 'cookie' && authConfig.cookie?.loginUrl) {
+        const loginUrl = authConfig.cookie.loginUrl;
+        const loginPath = loginUrl.replace(/^https?:\/\/[^/]+/, '');
+        const currentUrl = page.url();
+        const currentPath = currentUrl.replace(/^https?:\/\/[^/]+/, '');
+        if (currentPath.split('?')[0] === loginPath.split('?')[0] && url !== loginUrl) {
+          throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
         }
+      }
 
-        let clsScore = 0;
-        let sessionValue = 0;
-        let sessionEntries = [];
-        try {
-          const clsObs = new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) {
-              if (!entry.hadRecentInput) {
-                const first = sessionEntries[0];
-                const last = sessionEntries[sessionEntries.length - 1];
-                if (
-                  !first ||
-                  (entry.startTime - last.startTime < 1000 &&
-                    entry.startTime - first.startTime < 5000)
-                ) {
-                  sessionValue += entry.value;
-                  sessionEntries.push(entry);
-                } else {
+      const vitals = await page.evaluate(() => {
+        return new Promise((resolve) => {
+          const result = { lcp: 0, fcp: 0, cls: 0, ttfb: 0 };
+
+          const navEntry = performance.getEntriesByType('navigation')[0];
+          if (navEntry) result.ttfb = navEntry.responseStart;
+
+          const fcpEntry = performance.getEntriesByName(
+            'first-contentful-paint'
+          )[0];
+          if (fcpEntry) result.fcp = fcpEntry.startTime;
+
+          let lastLCP = 0;
+          try {
+            const lcpObs = new PerformanceObserver((list) => {
+              const entries = list.getEntries();
+              if (entries.length > 0)
+                lastLCP = entries[entries.length - 1].startTime;
+            });
+            lcpObs.observe({ type: 'largest-contentful-paint', buffered: true });
+          } catch (e) {
+            /* not supported */
+          }
+
+          let clsScore = 0;
+          let sessionValue = 0;
+          let sessionEntries = [];
+          try {
+            const clsObs = new PerformanceObserver((list) => {
+              for (const entry of list.getEntries()) {
+                if (!entry.hadRecentInput) {
+                  const first = sessionEntries[0];
+                  const last = sessionEntries[sessionEntries.length - 1];
+                  if (
+                    !first ||
+                    (entry.startTime - last.startTime < 1000 &&
+                      entry.startTime - first.startTime < 5000)
+                  ) {
+                    sessionValue += entry.value;
+                    sessionEntries.push(entry);
+                  } else {
+                    clsScore = Math.max(clsScore, sessionValue);
+                    sessionValue = entry.value;
+                    sessionEntries = [entry];
+                  }
                   clsScore = Math.max(clsScore, sessionValue);
-                  sessionValue = entry.value;
-                  sessionEntries = [entry];
                 }
-                clsScore = Math.max(clsScore, sessionValue);
               }
-            }
-          });
-          clsObs.observe({ type: 'layout-shift', buffered: true });
-        } catch (e) {
-          /* not supported */
-        }
+            });
+            clsObs.observe({ type: 'layout-shift', buffered: true });
+          } catch (e) {
+            /* not supported */
+          }
 
-        setTimeout(() => {
-          result.lcp = lastLCP;
-          result.cls = clsScore;
-          resolve(result);
-        }, 3000);
+          setTimeout(() => {
+            result.lcp = lastLCP;
+            result.cls = clsScore;
+            resolve(result);
+          }, 3000);
+        });
       });
-    });
 
-    if (vitals.lcp === 0 && vitals.fcp === 0 && vitals.ttfb === 0) {
-      throw new Error('No performance entries collected — page may not have loaded');
+      if (vitals.lcp === 0 && vitals.fcp === 0 && vitals.ttfb === 0) {
+        throw new Error('No performance entries collected — page may not have loaded');
+      }
+
+      console.log(`[VU ${__VU}][iter ${__ITER}] vitals: LCP=${vitals.lcp.toFixed(0)}ms FCP=${vitals.fcp.toFixed(0)}ms CLS=${vitals.cls.toFixed(3)} TTFB=${vitals.ttfb.toFixed(0)}ms`);
+
+      customLCP.add(vitals.lcp, { url: url });
+      customFCP.add(vitals.fcp, { url: url });
+      customCLS.add(vitals.cls, { url: url });
+      customTTFB.add(vitals.ttfb, { url: url });
+      successRate.add(1);
+      await page.close();
+      break;
+    } catch (err) {
+      await page.close();
+      const errMsg = String(err?.message || err || 'unknown');
+      if (attempt < maxAttempts) {
+        console.log(`[VU ${__VU}][iter ${__ITER}] attempt ${attempt} failed (${errMsg}), retrying...`);
+        continue;
+      }
+      console.error(`[VU ${__VU}][iter ${__ITER}] ERROR on ${url}: ${errMsg}`);
+      pageErrors.add(1, { url: url, error: errMsg });
+      successRate.add(0);
     }
-
-    console.log(`[VU ${__VU}][iter ${__ITER}] vitals: LCP=${vitals.lcp.toFixed(0)}ms FCP=${vitals.fcp.toFixed(0)}ms CLS=${vitals.cls.toFixed(3)} TTFB=${vitals.ttfb.toFixed(0)}ms`);
-
-    customLCP.add(vitals.lcp, { url: url });
-    customFCP.add(vitals.fcp, { url: url });
-    customCLS.add(vitals.cls, { url: url });
-    customTTFB.add(vitals.ttfb, { url: url });
-    successRate.add(1);
-  } catch (err) {
-    const errMsg = String(err?.message || err || 'unknown');
-    console.error(`[VU ${__VU}][iter ${__ITER}] ERROR on ${url}: ${errMsg}`);
-    pageErrors.add(1, { url: url, error: errMsg });
-    successRate.add(0);
-  } finally {
-    await page.close();
   }
 
   sleep(thinkTime);

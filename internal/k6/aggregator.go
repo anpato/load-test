@@ -31,7 +31,7 @@ func NewAggregator() *Aggregator {
 }
 
 func isRelevantMetric(metric string) bool {
-	return strings.Contains(metric, "web_vital") || strings.HasPrefix(metric, "custom_")
+	return strings.HasPrefix(metric, "custom_") || metric == "page_errors"
 }
 
 func (a *Aggregator) Add(url, metric string, value float64) {

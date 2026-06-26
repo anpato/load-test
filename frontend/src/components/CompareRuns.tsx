@@ -62,7 +62,7 @@ function RunPicker({
         <option value="">Select a run...</option>
         {runs.map((r) => (
           <option key={r.id} value={r.id} disabled={r.id === otherId}>
-            {runHost(r) || r.id.slice(0, 8)} — {r.config?.testType || 'custom'} — {r.urls?.length || 0} URLs — {new Date(r.startedAt).toLocaleString()}
+            {r.name || runHost(r) || r.id.slice(0, 8)} — {r.config?.testType || 'custom'} — {r.urls?.length || 0} URLs — {new Date(r.startedAt).toLocaleString()}
           </option>
         ))}
       </select>
@@ -87,7 +87,7 @@ export default function CompareRuns({ onClose, initialRunA, initialRunB }: Compa
   useEffect(() => {
     listRuns()
       .then((r) => {
-        const finished = (r || []).filter((run) => (run.status === 'finished' || run.status === 'error') && run.results && Object.keys(run.results).length > 0);
+        const finished = (r || []).filter((run) => (run.status === 'finished' || run.status === 'breached' || run.status === 'error') && run.results && Object.keys(run.results).length > 0);
         setRuns(finished);
       })
       .finally(() => setLoading(false));

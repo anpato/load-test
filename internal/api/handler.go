@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -110,6 +111,8 @@ func (s *Server) HandleExpandRoutes(w http.ResponseWriter, r *http.Request) {
 type createRunRequest struct {
 	URLs   []string       `json:"urls"`
 	Config store.RunConfig `json:"config"`
+	Name   string         `json:"name,omitempty"`
+	Tags   []string       `json:"tags,omitempty"`
 }
 
 type createRunResponse struct {
@@ -135,6 +138,8 @@ func (s *Server) startRun(w http.ResponseWriter, req createRunRequest) {
 	run := &store.Run{
 		ID:        id,
 		Status:    store.StatusPending,
+		Name:      req.Name,
+		Tags:      req.Tags,
 		URLs:      req.URLs,
 		Config:    req.Config,
 		StartedAt: time.Now(),
@@ -217,6 +222,7 @@ func (s *Server) startRun(w http.ResponseWriter, req createRunRequest) {
 				if !ok {
 					logsCh = nil
 				} else {
+					run.AppendLog(line)
 					s.broadcastEvent(id, "log", map[string]any{
 						"message": line,
 					})
@@ -259,12 +265,29 @@ func (s *Server) startRun(w http.ResponseWriter, req createRunRequest) {
 			}
 		}
 
+		// Ensure every selected URL appears in results, even if
+		// it was never reached during the test.
+		for _, u := range req.URLs {
+			existing := run.GetResults()
+			if _, ok := existing[u]; !ok {
+				run.UpdateResult(store.URLResult{URL: u})
+			}
+		}
+
 		if doneErr != nil && ctx.Err() == nil {
-			run.SetError(doneErr.Error())
-			s.broadcastEvent(id, "status", map[string]any{
-				"state": "error",
-				"error": doneErr.Error(),
-			})
+			var tbErr *k6.ThresholdBreachedError
+			if errors.As(doneErr, &tbErr) {
+				run.SetStatus(store.StatusBreached)
+				s.broadcastEvent(id, "status", map[string]any{
+					"state": "breached",
+				})
+			} else {
+				run.SetError(doneErr.Error())
+				s.broadcastEvent(id, "status", map[string]any{
+					"state": "error",
+					"error": doneErr.Error(),
+				})
+			}
 		} else {
 			run.SetStatus(store.StatusFinished)
 			s.broadcastEvent(id, "status", map[string]any{
@@ -297,6 +320,8 @@ func snapshotsToResults(snapshots []k6.MetricSnapshot) []store.URLResult {
 			Max:     snap.Max,
 		}
 		switch {
+		case snap.Metric == "page_errors":
+			ur.Errors = len(snap.Samples)
 		case strings.Contains(snap.Metric, "lcp"):
 			ur.LCP = vm
 		case strings.Contains(snap.Metric, "fcp"):
@@ -345,6 +370,20 @@ func (s *Server) HandleStopRun(w http.ResponseWriter, r *http.Request) {
 
 	cancel()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+}
+
+func (s *Server) HandleDeleteRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	s.mu.Lock()
+	if cancel, ok := s.cancels[id]; ok {
+		cancel()
+		delete(s.cancels, id)
+	}
+	s.mu.Unlock()
+
+	s.store.Delete(id)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (s *Server) HandleListRuns(w http.ResponseWriter, r *http.Request) {
@@ -424,9 +463,32 @@ func (s *Server) HandleRerun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var override struct {
+		AuthJSON *string  `json:"authJson,omitempty"`
+		Name     *string  `json:"name,omitempty"`
+		Tags     []string `json:"tags,omitempty"`
+	}
+	_ = readJSON(r, &override)
+
+	config := original.Config
+	if override.AuthJSON != nil {
+		config.AuthJSON = *override.AuthJSON
+	}
+
+	name := original.Name
+	if override.Name != nil {
+		name = *override.Name
+	}
+	tags := original.Tags
+	if override.Tags != nil {
+		tags = override.Tags
+	}
+
 	req := createRunRequest{
 		URLs:   original.URLs,
-		Config: original.Config,
+		Config: config,
+		Name:   name,
+		Tags:   tags,
 	}
 
 	s.startRun(w, req)

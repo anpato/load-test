@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -115,10 +115,12 @@ function VitalChart({
   vital,
   history,
   urls,
+  colorMap,
 }: {
   vital: VitalKey;
   history: MetricSnapshot[];
   urls: string[];
+  colorMap: Map<string, string>;
 }) {
   const meta = VITAL_META[vital];
   const data = buildChartData(history, vital, urls);
@@ -173,15 +175,21 @@ function VitalChart({
             formatter={(value: string) =>
               value === 'avg' ? 'Average' : shortPath(value)
             }
-            wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-mono, monospace)', paddingTop: 8 }}
+            wrapperStyle={{
+              fontSize: 11,
+              fontFamily: 'var(--font-mono, monospace)',
+              paddingTop: 8,
+              maxHeight: 28,
+              overflow: 'hidden',
+            }}
             iconType="plainline"
           />
-          {urls.map((url, i) => (
+          {urls.map((url) => (
             <Line
               key={url}
               type="monotone"
               dataKey={url}
-              stroke={LINE_COLORS[i % LINE_COLORS.length]}
+              stroke={colorMap.get(url) || LINE_COLORS[0]}
               strokeWidth={2}
               dot={false}
               connectNulls
@@ -206,97 +214,16 @@ function VitalChart({
   );
 }
 
-function LogPanel({ logs }: { logs: string[] }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [filter, setFilter] = useState('');
+import LogPanel from './LogPanel';
 
-  useEffect(() => {
-    if (autoScroll && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+function useStableColorMap(urls: string[]) {
+  const mapRef = useRef(new Map<string, string>());
+  for (const url of urls) {
+    if (!mapRef.current.has(url)) {
+      mapRef.current.set(url, LINE_COLORS[mapRef.current.size % LINE_COLORS.length]);
     }
-  }, [logs, autoScroll]);
-
-  function handleScroll() {
-    if (!containerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    setAutoScroll(scrollHeight - scrollTop - clientHeight < 40);
   }
-
-  const filtered = filter
-    ? logs.filter((l) => l.toLowerCase().includes(filter.toLowerCase()))
-    : logs;
-
-  function lineColor(line: string): string {
-    if (line.toLowerCase().includes('setup') || line.toLowerCase().includes('teardown'))
-      return 'var(--color-terminal-dim)';
-    return 'var(--color-terminal-text)';
-  }
-
-  return (
-    <div
-      className="rounded-[8px] overflow-hidden"
-      style={{
-        background: 'var(--color-terminal-bg)',
-        border: '1px solid var(--color-terminal-border)',
-      }}
-    >
-      <div
-        className="px-3 py-2 flex items-center gap-3 border-b"
-        style={{
-          background: 'var(--color-terminal-header)',
-          borderColor: 'var(--color-terminal-border)',
-        }}
-      >
-        <span className="font-mono font-bold text-[12px] shrink-0" style={{ color: 'var(--color-terminal-dim)' }}>
-          k6 output
-        </span>
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter..."
-          className="flex-1 px-2 py-0.5 rounded-[3px] font-mono text-[12px] outline-none min-w-0"
-          style={{
-            background: 'var(--color-terminal-bg)',
-            border: '1px solid var(--color-terminal-border)',
-            color: 'var(--color-terminal-input)',
-          }}
-        />
-        <span className="font-mono text-[11px] shrink-0" style={{ color: 'var(--color-terminal-dim)' }}>
-          {filtered.length} lines
-        </span>
-        <button
-          onClick={() => setAutoScroll((v) => !v)}
-          className="font-mono font-semibold text-[11px] px-2 py-0.5 rounded-full shrink-0 transition-colors"
-          style={{
-            color: autoScroll ? 'var(--color-terminal-accent)' : 'var(--color-terminal-dim)',
-            background: autoScroll ? 'color-mix(in srgb, var(--color-terminal-accent) 12%, transparent)' : 'transparent',
-          }}
-        >
-          {autoScroll ? 'Following' : 'Paused'}
-        </button>
-      </div>
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="h-[200px] overflow-y-auto p-[10px_13px]"
-        style={{ background: 'var(--color-terminal-bg)' }}
-      >
-        {filtered.length === 0 ? (
-          <span className="font-mono text-[12.5px]" style={{ color: 'var(--color-terminal-muted)' }}>
-            Waiting for output...
-          </span>
-        ) : (
-          filtered.map((line, i) => (
-            <div key={i} className="font-mono text-[12.5px] leading-relaxed" style={{ color: lineColor(line) }}>
-              {line}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+  return mapRef.current;
 }
 
 export default function LiveDashboard({
@@ -307,6 +234,7 @@ export default function LiveDashboard({
   onStop,
 }: Props) {
   const allUrls = [...new Set(history.map((s) => s.URL).filter(Boolean))].sort();
+  const colorMap = useStableColorMap(allUrls);
 
   return (
     <div className="space-y-4">
@@ -376,14 +304,17 @@ export default function LiveDashboard({
         })}
       </div>
 
-      {/* Charts stacked vertically */}
-      <div className="space-y-4">
-        {CHART_VITALS.map((vital) => (
-          <VitalChart key={vital} vital={vital} history={history} urls={allUrls} />
-        ))}
+      {/* Charts + logs side by side on xl, stacked below */}
+      <div className="flex flex-col xl:flex-row gap-4">
+        <div className="space-y-4 flex-1 min-w-0">
+          {CHART_VITALS.map((vital) => (
+            <VitalChart key={vital} vital={vital} history={history} urls={allUrls} colorMap={colorMap} />
+          ))}
+        </div>
+        <div className="xl:w-[480px] xl:flex-shrink-0">
+          <LogPanel logs={logs} defaultOpen />
+        </div>
       </div>
-
-      <LogPanel logs={logs} />
     </div>
   );
 }
