@@ -30,7 +30,7 @@ interface HistoryDrawerProps {
 
 export default function HistoryDrawer({ onClose }: HistoryDrawerProps) {
   const navigate = useNavigate();
-  const { loadRunIntoWizard, authConfig, headed, setError } = useWizard();
+  const { loadRunIntoWizard, authConfig, setError } = useWizard();
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [authPromptRunId, setAuthPromptRunId] = useState<string | null>(null);
@@ -49,13 +49,13 @@ export default function HistoryDrawer({ onClose }: HistoryDrawerProps) {
       setError(null);
       setAuthPromptRunId(null);
       try {
-        const options: { authJson?: string; headed?: boolean } = { headed };
+        const options: { authJson?: string } = {};
         if (authJsonOverride !== undefined) {
           options.authJson = authJsonOverride;
         }
         const { runId } = await rerunTest(
           id,
-          options
+          Object.keys(options).length > 0 ? options : undefined
         );
         onClose();
         navigate(`/running/${runId}`);

@@ -27,7 +27,7 @@ function statusLabel(status: string) {
 export default function ResultsPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
-  const { loadRunIntoWizard, resetWizard, authConfig, headed, setError } = useWizard();
+  const { loadRunIntoWizard, resetWizard, authConfig, setError } = useWizard();
   const [run, setRun] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
@@ -47,13 +47,13 @@ export default function ResultsPage() {
       setError(null);
       setShowAuthPrompt(false);
       try {
-        const options: { authJson?: string; headed?: boolean } = { headed };
+        const options: { authJson?: string } = {};
         if (authJsonOverride !== undefined) {
           options.authJson = authJsonOverride;
         }
         const { runId: newId } = await rerunTest(
           runId,
-          options
+          Object.keys(options).length > 0 ? options : undefined
         );
         navigate(`/running/${newId}`);
       } catch (err) {
