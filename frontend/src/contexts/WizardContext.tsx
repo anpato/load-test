@@ -21,6 +21,8 @@ interface WizardState {
   setRunName: (n: string) => void;
   runTags: string[];
   setRunTags: (t: string[]) => void;
+  headed: boolean;
+  setHeaded: (v: boolean) => void;
   error: string | null;
   setError: (e: string | null) => void;
   allUrls: string[];
@@ -40,6 +42,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [authConfig, setAuthConfig] = useState<AuthConfigType>({ type: 'none' });
   const [runName, setRunName] = useState('');
   const [runTags, setRunTags] = useState<string[]>([]);
+  const [headed, setHeaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const allUrls = [...new Set([...crawledUrls, ...manualUrls])];
@@ -52,6 +55,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     setError(null);
     setRunName(r.name || '');
     setRunTags(r.tags || []);
+    setHeaded(r.config?.headed || false);
     if (r.config?.authJson) {
       try {
         setAuthConfig(JSON.parse(r.config.authJson));
@@ -84,6 +88,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       authConfig, setAuthConfig,
       runName, setRunName,
       runTags, setRunTags,
+      headed, setHeaded,
       error, setError,
       allUrls,
       loadRunIntoWizard,

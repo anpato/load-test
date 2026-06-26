@@ -174,6 +174,7 @@ func (s *Server) startRun(w http.ResponseWriter, req createRunRequest) {
 		Stages:    k6Stages,
 		ThinkTime: req.Config.ThinkTime,
 		AuthJSON:  authJSON,
+		Headed:    req.Config.Headed,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -467,12 +468,16 @@ func (s *Server) HandleRerun(w http.ResponseWriter, r *http.Request) {
 		AuthJSON *string  `json:"authJson,omitempty"`
 		Name     *string  `json:"name,omitempty"`
 		Tags     []string `json:"tags,omitempty"`
+		Headed   *bool    `json:"headed,omitempty"`
 	}
 	_ = readJSON(r, &override)
 
 	config := original.Config
 	if override.AuthJSON != nil {
 		config.AuthJSON = *override.AuthJSON
+	}
+	if override.Headed != nil {
+		config.Headed = *override.Headed
 	}
 
 	name := original.Name

@@ -96,7 +96,7 @@ export default function LogPanel({ logs, defaultOpen = false }: LogPanelProps) {
         className="overflow-y-auto p-[10px_13px] transition-[height] duration-200"
         style={{
           background: 'var(--color-terminal-bg)',
-          height: open ? 200 : 0,
+          height: open ? 360 : 0,
           padding: open ? undefined : '0 13px',
         }}
       >

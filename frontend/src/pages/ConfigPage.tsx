@@ -12,6 +12,7 @@ export default function ConfigPage() {
     selectedUrls, setSelectedUrls, setManualUrls, setCrawledUrls,
     authConfig, setAuthConfig, setBaseUrl, setError,
     runName, setRunName, runTags, setRunTags,
+    headed, setHeaded,
   } = useWizard();
   const [tagInput, setTagInput] = useState('');
 
@@ -23,6 +24,8 @@ export default function ConfigPage() {
   latestName.current = runName;
   const latestTags = useRef(runTags);
   latestTags.current = runTags;
+  const latestHeaded = useRef(headed);
+  latestHeaded.current = headed;
 
   useEffect(() => {
     if (selectedUrls.length === 0) navigate('/', { replace: true });
@@ -64,6 +67,7 @@ export default function ConfigPage() {
         const { runId } = await createRun(urls, {
           ...config,
           authJson,
+          headed: latestHeaded.current,
         }, latestName.current, latestTags.current);
         navigate(`/running/${runId}`);
       } catch (err) {
@@ -134,6 +138,17 @@ export default function ConfigPage() {
           />
         </div>
       </div>
+
+      <label className="flex items-center gap-2.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={headed}
+          onChange={(e) => setHeaded(e.target.checked)}
+          className="w-4 h-4 rounded border-border accent-accent"
+        />
+        <span className="text-[13px] text-fg">Headed browser</span>
+        <span className="text-[11px] text-muted">— accurate FCP/LCP for streaming SSR</span>
+      </label>
 
       <HostSwap urls={selectedUrls} onSwap={handleHostSwap} />
       <div className="text-[13px] text-muted mb-1">

@@ -92,36 +92,43 @@ function setupBearerAuth() {
   };
 }
 
-// Login runs per-iteration because k6 browser creates an isolated context per
-// browser.newPage() call — cookies from a previous page don't carry over.
-// Caching vuState.authenticated was incorrect: it skipped login but the new
-// page had no cookies, causing all target URLs to redirect to login.
-async function doCookieLogin(page) {
+async function doCookieLogin(context) {
   const cfg = authConfig.cookie;
-  console.log(`[VU ${__VU}] cookie auth: navigating to ${cfg.loginUrl}`);
-  await page.goto(cfg.loginUrl, { waitUntil: 'load', timeout: 60000 });
+  const page = await context.newPage();
+  try {
+    console.log(`[VU ${__VU}] cookie auth: navigating to ${cfg.loginUrl}`);
+    await page.goto(cfg.loginUrl, { waitUntil: 'load', timeout: 60000 });
 
-  for (let i = 0; i < cfg.steps.length; i++) {
-    const step = cfg.steps[i];
-    if (!step.action) continue;
-    console.log(`[VU ${__VU}] login step ${i + 1}/${cfg.steps.length}: ${step.action} on ${step.selector}`);
+    for (let i = 0; i < cfg.steps.length; i++) {
+      const step = cfg.steps[i];
+      if (!step.action) continue;
+      console.log(`[VU ${__VU}] login step ${i + 1}/${cfg.steps.length}: ${step.action} on ${step.selector}`);
 
-    if (step.action === 'fill') {
-      await page.locator(step.selector).fill(step.value);
-    } else if (step.action === 'click') {
-      await page.locator(step.selector).click();
+      if (step.action === 'fill') {
+        await page.locator(step.selector).fill(step.value);
+      } else if (step.action === 'click') {
+        await page.locator(step.selector).click();
+      }
+
+      if (step.waitFor === 'networkidle') {
+        await page.waitForLoadState('load');
+      } else if (step.waitFor === 'navigation') {
+        await page.waitForNavigation({ timeout: 60000 });
+      }
     }
 
-    if (step.waitFor === 'networkidle') {
-      await page.waitForLoadState('load');
-    } else if (step.waitFor === 'navigation') {
-      await page.waitForNavigation({ timeout: 60000 });
-    }
+    await page.waitForLoadState('load');
+    console.log(`[VU ${__VU}] cookie auth: login complete (now at ${page.url()})`);
+  } finally {
+    await page.close();
   }
-
-  await page.waitForLoadState('networkidle');
-  console.log(`[VU ${__VU}] cookie auth: login complete (now at ${page.url()})`);
 }
+
+// Cookie auth runs once per VU; cookies are saved and injected into
+// fresh contexts so each page load has no browser cache (cold load)
+// but retains the auth session.
+let vuCookies = null;
+let vuHeaders = null;
 
 export default async function (data) {
   if (urls.length === 0) {
@@ -129,25 +136,37 @@ export default async function (data) {
     return;
   }
 
+  if (!vuHeaders && data.headers && Object.keys(data.headers).length > 0) {
+    vuHeaders = data.headers;
+  }
+
+  if (authConfig.type === 'cookie' && !vuCookies) {
+    const loginCtx = await browser.newContext();
+    await doCookieLogin(loginCtx);
+    vuCookies = await loginCtx.cookies();
+    await loginCtx.close();
+  }
+
   // Stride by maxVUs so each VU tests different URLs with no overlap.
-  // VU 1 → URLs 0,5,10,15  VU 2 → URLs 1,6,11,16  etc. (with 5 VUs, 20 URLs)
   const urlIndex = ((__VU - 1) + __ITER * maxVUs) % urls.length;
   const url = urls[urlIndex];
   console.log(`[VU ${__VU}][iter ${__ITER}] testing ${url} (${urlIndex + 1}/${urls.length})`);
 
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const page = await browser.newPage();
+    let ctx;
+    let page;
+    try {
+      ctx = await browser.newContext();
+      if (vuCookies) await ctx.addCookies(vuCookies);
+      if (vuHeaders) await ctx.setExtraHTTPHeaders(vuHeaders);
+      page = await ctx.newPage();
+    } catch {
+      if (ctx) await ctx.close().catch(() => {});
+      return;
+    }
 
     try {
-      if (data.headers && Object.keys(data.headers).length > 0) {
-        await page.setExtraHTTPHeaders(data.headers);
-      }
-
-      if (authConfig.type === 'cookie') {
-        await doCookieLogin(page);
-      }
-
       console.log(`[VU ${__VU}][iter ${__ITER}] navigating to ${url}`);
       await page.goto(url, { waitUntil: 'load', timeout: 60000 });
 
@@ -157,7 +176,14 @@ export default async function (data) {
         const currentUrl = page.url();
         const currentPath = currentUrl.replace(/^https?:\/\/[^/]+/, '');
         if (currentPath.split('?')[0] === loginPath.split('?')[0] && url !== loginUrl) {
-          throw new Error(`Redirected to login — auth may have failed (landed on ${currentUrl})`);
+          console.log(`[VU ${__VU}] session expired, re-authenticating...`);
+          await page.close();
+          await ctx.close();
+          const loginCtx = await browser.newContext();
+          await doCookieLogin(loginCtx);
+          vuCookies = await loginCtx.cookies();
+          await loginCtx.close();
+          throw new Error('Session expired — re-authenticated, retrying');
         }
       }
 
@@ -235,9 +261,11 @@ export default async function (data) {
       customTTFB.add(vitals.ttfb, { url: url });
       successRate.add(1);
       await page.close();
+      await ctx.close();
       break;
     } catch (err) {
-      await page.close();
+      await page.close().catch(() => {});
+      await ctx.close().catch(() => {});
       const errMsg = String(err?.message || err || 'unknown');
       if (attempt < maxAttempts) {
         console.log(`[VU ${__VU}][iter ${__ITER}] attempt ${attempt} failed (${errMsg}), retrying...`);

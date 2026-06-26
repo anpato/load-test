@@ -33,6 +33,7 @@ type RunConfig struct {
 	ThinkTime  int
 	AuthJSON   string
 	ScriptPath string
+	Headed     bool
 }
 
 type RunOutput struct {
@@ -111,7 +112,12 @@ func (r *Runner) Start(ctx context.Context, cfg RunConfig) *RunOutput {
 			"--log-output=stderr",
 			r.scriptPath,
 		)
-		env := os.Environ()
+		env := make([]string, 0, len(os.Environ())+8)
+		for _, e := range os.Environ() {
+			if !strings.HasPrefix(e, "K6_BROWSER_HEADLESS=") {
+				env = append(env, e)
+			}
+		}
 		env = append(env,
 			"K6_BROWSER_ENABLED=true",
 			"URLS_JSON="+string(urlsJSON),
@@ -120,6 +126,9 @@ func (r *Runner) Start(ctx context.Context, cfg RunConfig) *RunOutput {
 		)
 		if cfg.AuthJSON != "" {
 			env = append(env, "AUTH_JSON="+cfg.AuthJSON)
+		}
+		if cfg.Headed {
+			env = append(env, "K6_BROWSER_HEADLESS=false")
 		}
 		cmd.Env = env
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

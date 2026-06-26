@@ -65,6 +65,7 @@ export interface RunConfig {
   thinkTime: number;
   testType: 'smoke' | 'load' | 'stress' | 'soak' | 'custom';
   authJson?: string;
+  headed?: boolean;
 }
 
 export interface VitalMetrics {

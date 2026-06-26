@@ -24,7 +24,9 @@ interface Props {
   history: MetricSnapshot[];
   logs: string[];
   connected: boolean;
+  stopped: boolean;
   onStop: () => void;
+  onRerun: () => void;
 }
 
 const VITALS: VitalKey[] = ['lcp', 'fcp', 'cls', 'ttfb'];
@@ -157,19 +159,21 @@ function VitalChart({
             width={48}
           />
           <Tooltip
-            contentStyle={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 8,
-              fontSize: 12,
-              fontFamily: 'var(--font-mono, monospace)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null;
+              return (
+                <div className="bg-s2 border border-border rounded-[8px] p-3 shadow-lg font-mono text-[12px]">
+                  <div className="text-subtle mb-1.5">Snapshot {label}</div>
+                  {payload.map((entry) => (
+                    <div key={entry.name} className="flex items-center gap-2 text-fg">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: entry.color }} />
+                      <span className="text-muted">{entry.name === 'avg' ? 'Average' : shortPath(String(entry.name))}</span>
+                      <span className="ml-auto font-semibold">{formatVital(vital, Number(entry.value))}</span>
+                    </div>
+                  ))}
+                </div>
+              );
             }}
-            formatter={(value: unknown, name: unknown) => [
-              formatVital(vital, Number(value)),
-              String(name) === 'avg' ? 'Average' : shortPath(String(name)),
-            ]}
-            labelFormatter={(label) => `Snapshot ${label}`}
           />
           <Legend
             formatter={(value: string) =>
@@ -192,7 +196,7 @@ function VitalChart({
               stroke={colorMap.get(url) || LINE_COLORS[0]}
               strokeWidth={2}
               dot={false}
-              connectNulls
+              connectNulls={false}
               name={url}
               animationDuration={300}
             />
@@ -231,7 +235,9 @@ export default function LiveDashboard({
   history,
   logs,
   connected,
+  stopped,
   onStop,
+  onRerun,
 }: Props) {
   const allUrls = [...new Set(history.map((s) => s.URL).filter(Boolean))].sort();
   const colorMap = useStableColorMap(allUrls);
@@ -256,57 +262,64 @@ export default function LiveDashboard({
             {allUrls.length} URL{allUrls.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <button
-          onClick={onStop}
-          className="h-[38px] px-4 bg-bad text-white rounded-[4px] font-semibold text-[13px] hover:opacity-90 transition-opacity"
-        >
-          ■ Stop test
-        </button>
+        {stopped ? (
+          <button
+            onClick={onRerun}
+            className="h-[38px] px-4 bg-accent text-accent-fg rounded-[4px] font-semibold text-[13px] hover:opacity-90 transition-opacity"
+          >
+            Re-run
+          </button>
+        ) : (
+          <button
+            onClick={onStop}
+            className="h-[38px] px-4 bg-bad text-white rounded-[4px] font-semibold text-[13px] hover:opacity-90 transition-opacity"
+          >
+            ■ Stop test
+          </button>
+        )}
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {VITALS.map((v) => {
-          const val = getAvgP75(history, v);
-          const rating = val !== null ? getVitalRating(v, val) : 'good';
-          const thresh = VITAL_THRESHOLDS[v];
-          const pct = val !== null ? Math.min((val / thresh.needsImprovement) * 100, 100) : 0;
-          const color = val !== null ? ratingCssColor(rating) : 'var(--color-border)';
-          const meta = VITAL_META[v];
-          return (
-            <div key={v} className="bg-surface border border-border rounded-[8px] p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono font-bold text-[12px] tracking-wide text-fg">{meta.label}</span>
-                {val !== null && <RatingPill rating={rating} />}
-              </div>
-              <div className="flex items-baseline gap-1.5 mb-3">
-                <span className="font-mono font-semibold text-[28px] text-fg">
-                  {val !== null ? formatVital(v, val) : '—'}
-                </span>
-                <span className="text-[11px] text-subtle">p75</span>
-              </div>
-              <div className="h-[6px] bg-s2 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${pct}%`,
-                    background: color,
-                    transition: 'width 0.6s ease-out, background 0.3s ease',
-                  }}
-                />
-              </div>
-              <div className="flex justify-between mt-1.5">
-                <span className="font-mono text-[10.5px] text-subtle">{meta.good}</span>
-                <span className="font-mono text-[10.5px] text-subtle">{meta.poor}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Charts + logs side by side on xl, stacked below */}
+      {/* Charts + cards + logs side by side on xl, stacked below */}
       <div className="flex flex-col xl:flex-row gap-4">
         <div className="space-y-4 flex-1 min-w-0">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {VITALS.map((v) => {
+              const val = getAvgP75(history, v);
+              const rating = val !== null ? getVitalRating(v, val) : 'good';
+              const thresh = VITAL_THRESHOLDS[v];
+              const pct = val !== null ? Math.min((val / thresh.needsImprovement) * 100, 100) : 0;
+              const color = val !== null ? ratingCssColor(rating) : 'var(--color-border)';
+              const meta = VITAL_META[v];
+              return (
+                <div key={v} className="bg-surface border border-border rounded-[8px] p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono font-bold text-[12px] tracking-wide text-fg">{meta.label}</span>
+                    {val !== null && <RatingPill rating={rating} />}
+                  </div>
+                  <div className="flex items-baseline gap-1.5 mb-3">
+                    <span className="font-mono font-semibold text-[28px] text-fg">
+                      {val !== null ? formatVital(v, val) : '—'}
+                    </span>
+                    <span className="text-[11px] text-subtle">p75</span>
+                  </div>
+                  <div className="h-[6px] bg-s2 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        background: color,
+                        transition: 'width 0.6s ease-out, background 0.3s ease',
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-1.5">
+                    <span className="font-mono text-[10.5px] text-subtle">{meta.good}</span>
+                    <span className="font-mono text-[10.5px] text-subtle">{meta.poor}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {CHART_VITALS.map((vital) => (
             <VitalChart key={vital} vital={vital} history={history} urls={allUrls} colorMap={colorMap} />
           ))}

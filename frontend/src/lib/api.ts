@@ -107,7 +107,7 @@ export function deleteRun(id: string): Promise<{ status: string }> {
 
 export function rerunTest(
   id: string,
-  options?: { authJson?: string },
+  options?: { authJson?: string; headed?: boolean },
 ): Promise<{ runId: string }> {
   return request(`/runs/${id}/rerun`, {
     method: 'POST',

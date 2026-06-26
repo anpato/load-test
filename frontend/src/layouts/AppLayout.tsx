@@ -75,7 +75,7 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-bg">
       <header className="sticky top-0 z-40 h-[60px] bg-surface border-b border-border flex items-center">
-        <div className="max-w-[1120px] mx-auto px-7 w-full flex items-center justify-between">
+        <div className="max-w-[1400px] mx-auto px-7 w-full flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
               className="w-[26px] h-[26px] bg-accent rounded-[7px] flex items-center justify-center flex-shrink-0 cursor-pointer"
@@ -119,7 +119,7 @@ export default function AppLayout() {
 
       {isWizardRoute && (
         <nav className="h-[58px] bg-surface border-b border-border hidden sm:flex items-center">
-          <div className="max-w-[1120px] mx-auto px-7 w-full flex items-center gap-0 overflow-x-auto">
+          <div className="max-w-[1400px] mx-auto px-7 w-full flex items-center gap-0 overflow-x-auto">
             {STEPS.map((s, i) => {
               const isActive = i === currentIdx;
               const isCompleted = i < currentIdx;
@@ -195,7 +195,7 @@ export default function AppLayout() {
         </div>
       )}
 
-      <main className="max-w-[1120px] mx-auto px-7 py-6 space-y-6">
+      <main className="max-w-[1400px] mx-auto px-7 py-6 space-y-6">
         <Outlet />
       </main>
 

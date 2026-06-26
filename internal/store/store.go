@@ -62,6 +62,7 @@ type RunConfig struct {
 	ThinkTime int    `json:"thinkTime"`
 	TestType  string `json:"testType"`
 	AuthJSON  string `json:"authJson,omitempty"`
+	Headed    bool   `json:"headed,omitempty"`
 }
 
 type Stage struct {
