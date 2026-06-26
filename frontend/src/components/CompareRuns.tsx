@@ -287,6 +287,48 @@ export default function CompareRuns({ onClose, initialRunA, initialRunB }: Compa
                 })}
               </div>
 
+              {/* Top changes */}
+              {(() => {
+                const changes: { path: string; vital: VitalKey; delta: number; valA: number; valB: number }[] = [];
+                for (const path of allPaths) {
+                  const a = getResultByPath(pathIndexA, path);
+                  const b = getResultByPath(pathIndexB, path);
+                  if (!a || !b) continue;
+                  for (const v of VITALS) {
+                    const valA = a[v].p75;
+                    const valB = b[v].p75;
+                    if (valA > 0 && valB > 0) {
+                      changes.push({ path, vital: v, delta: valB - valA, valA, valB });
+                    }
+                  }
+                }
+                changes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+                const top = changes.slice(0, 5);
+                if (top.length === 0) return null;
+                return (
+                  <div className="bg-surface border border-border rounded-[8px] p-4 space-y-2">
+                    <h3 className="font-semibold text-[12px] text-muted uppercase tracking-wide">Top Changes</h3>
+                    {top.map((c, i) => {
+                      const direction = deltaSign(c.delta);
+                      return (
+                        <div key={i} className="flex items-center gap-3 text-[13px]">
+                          <span className={`font-mono font-semibold text-[12px] w-[80px] text-right ${
+                            direction === 'better' ? 'text-accent' : direction === 'worse' ? 'text-bad' : 'text-subtle'
+                          }`}>
+                            {formatDelta(c.delta, c.vital)}
+                          </span>
+                          <span className="font-mono text-[11px] text-muted w-[40px]">{VITAL_META[c.vital].label}</span>
+                          <span className="text-fg font-mono text-[12px]">{shortRoute(c.path, allPaths)}</span>
+                          <span className="text-subtle text-[11px] ml-auto">
+                            {formatVital(c.vital, c.valA)} → {formatVital(c.vital, c.valB)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
               {/* Per-route table */}
               <div className="bg-surface border border-border rounded-[8px] overflow-hidden overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 900 }}>

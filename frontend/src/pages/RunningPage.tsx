@@ -25,8 +25,6 @@ export default function RunningPage() {
           disconnect();
           if (!stopped) {
             navigate(`/results/${runId}`, { replace: true });
-          } else {
-            setStopped(true);
           }
         }
       } catch {
